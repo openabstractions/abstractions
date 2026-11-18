@@ -116,6 +116,12 @@ type applicationV3Registrations struct {
 	preparedFiles          []registrationProgramFile
 	indexRaw               []byte
 	programApprovals       map[string]registrationProgramApproval
+	// readStamp is the registrations directory listing a read-only
+	// transaction's readLocked observed, or "" when the in-memory state may
+	// differ from the files (registry_v3_read_stamp.go).
+	readStamp string
+	// readRoles is the role projection of the state readStamp names.
+	readRoles *applicationRoles
 }
 
 func applicationV3Hash(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
@@ -209,6 +215,7 @@ func (s *applicationV3Registrations) setupModalityLocked(name, program, modality
 // readLocked always runs while descriptors.json's native CAS lock is held.
 // A stored signature is provenance. Reading it never grants dispatch authority.
 func (s *applicationV3Registrations) readLocked(ctx context.Context) error {
+	s.readStamp, s.readRoles = "", nil
 	index, err := cas.ReadLimitContext(ctx, filepath.Join(s.dir, "index.json"), applicationV3IndexLimit)
 	if err != nil {
 		return err
@@ -495,13 +502,21 @@ func (d *applicationDirectory) withRegistrationLegacyEditLocked(ctx context.Cont
 	}
 	var roles *applicationRoles
 	var changedLegacy map[string]wire.ApplicationDescriptor
+	// reused is a read-only transaction whose registrations directory still
+	// lists what the in-memory state was read from (refreshLocked).
+	reused := false
 	err := cas.ChangeLimitContext(ctx, filepath.Join(d.dir, "descriptors.json"), 600<<10, func(b []byte) ([]byte, error) {
 		legacy, err := decodeLegacyApplications(b)
 		if err != nil {
 			return nil, err
 		}
 		if d.v3 != nil {
-			if err := d.v3.readLocked(ctx); err != nil {
+			if readOnly {
+				reused, err = d.v3.refreshLocked(ctx)
+			} else {
+				err = d.v3.readLocked(ctx)
+			}
+			if err != nil {
 				return nil, err
 			}
 			for name := range d.v3.entries {
@@ -544,9 +559,16 @@ func (d *applicationDirectory) withRegistrationLegacyEditLocked(ctx context.Cont
 			changedLegacy = maps.Clone(legacy)
 		}
 		if d.v3 != nil && d.roleDecode != nil {
-			roles, err = d.projectRolesLocked()
-			if err != nil {
-				return nil, err
+			if reused && d.v3.readRoles != nil {
+				roles = &applicationRoles{hosts: d.v3.readRoles.hosts}
+			} else {
+				roles, err = d.projectRolesLocked()
+				if err != nil {
+					return nil, err
+				}
+				if readOnly && d.v3.readStamp != "" {
+					d.v3.readRoles = &applicationRoles{hosts: roles.hosts}
+				}
 			}
 		}
 		if messaging != nil {
@@ -575,6 +597,9 @@ func (d *applicationDirectory) withRegistrationLegacyEditLocked(ctx context.Cont
 		}
 	} else {
 		d.roles.Store(nil)
+		if d.v3 != nil {
+			d.v3.readStamp, d.v3.readRoles = "", nil
+		}
 	}
 	return err
 }

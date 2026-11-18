@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -36,31 +37,47 @@ func newCodexReceivingConnection(ctx context.Context, run func(context.Context, 
 	return r
 }
 
-func (r *codexReceivingConnection) observe(meta map[string]any) {
+// observe binds the first valid host thread and reports whether a call on a
+// bound connection comes from another thread. One Codex helper serves a chat
+// and its sub-agent threads, so a call with missing, invalid or another
+// thread's metadata leaves the binding and its receiver running; the
+// middleware refuses only that call's chat-bound messaging (AB-1p ruling
+// 2026-11-22). The binding never retargets or restarts.
+func (r *codexReceivingConnection) observe(meta map[string]any) (foreign bool) {
 	thread, ok := meta["threadId"].(string)
 	valid := ok && codexQueueThread.MatchString(thread)
 	r.mu.Lock()
-	if r.closed {
-		r.mu.Unlock()
-		return
-	}
-	if !valid {
-		bound := r.started
-		r.mu.Unlock()
-		if bound {
-			r.stop("unavailable_missing_thread_metadata")
-		}
-		return
-	}
 	if r.started {
-		changed := thread != r.thread
+		foreign = !valid || thread != r.thread
 		r.mu.Unlock()
-		if changed {
-			r.stop("unavailable_thread_changed")
-		}
-		return
+		return foreign
+	}
+	if r.closed || !valid {
+		r.mu.Unlock()
+		return false
 	}
 	r.startLocked(thread)
+	return false
+}
+
+// ended reports receiving that has stopped while the connection is open: its
+// receiver returned for good, or the binding was refused or stopped.
+func (r *codexReceivingConnection) ended() bool {
+	r.mu.Lock()
+	closed, started := r.closed, r.started
+	r.mu.Unlock()
+	if closed {
+		return true
+	}
+	if !started {
+		return false
+	}
+	select {
+	case <-r.done:
+		return true
+	default:
+		return false
+	}
 }
 
 // restore binds a thread the host app has loaded for this connection before
@@ -131,10 +148,90 @@ func (r *codexReceivingConnection) stop(reason string) {
 	}
 }
 
+// codexChatBoundTools act as the bound chat: they read its inbox, watch it,
+// or send with its context and return route. On a Codex helper every send,
+// reply and prepare uses that route once the chat is bound.
+var codexChatBoundTools = map[string]bool{
+	gateway.ToolMessagesInboxOpen: true,
+	gateway.ToolMessagesWait:      true,
+	"oa_messages_watch":           true,
+	gateway.ToolMessagesSend:      true,
+	gateway.ToolMessagesReply:     true,
+	gateway.ToolMessagesPrepare:   true,
+}
+
+// codexChatReads report a receiving state when receiving has ended.
+var codexChatReads = map[string]bool{gateway.ToolMessagesInboxOpen: true, gateway.ToolMessagesWait: true, "oa_messages_watch": true}
+
+const (
+	codexForeignThreadReason  = "This thread isn't the Codex chat connected to OpenAbstractions. Ask the main chat to send it."
+	codexReceivingEndedReason = "receiving ended for this connection; restart the OA connection in Codex"
+)
+
+type codexForeignThreadKey struct{}
+
+func codexForeignThread(ctx context.Context) bool {
+	foreign, _ := ctx.Value(codexForeignThreadKey{}).(bool)
+	return foreign
+}
+
+func codexChatRefusal(outcome, reason string) *mcp.CallToolResult {
+	raw, _ := json.Marshal(map[string]string{"outcome": outcome, "reason": reason})
+	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: string(raw)}}}
+}
+
+// codexBareUnavailable reports a tool answer of unavailable with no state or
+// reason.
+func codexBareUnavailable(result mcp.Result) bool {
+	out, ok := result.(*mcp.CallToolResult)
+	if !ok || out == nil {
+		return false
+	}
+	var raw []byte
+	switch structured := out.StructuredContent.(type) {
+	case json.RawMessage:
+		raw = structured
+	case nil:
+		if len(out.Content) != 0 {
+			if text, ok := out.Content[0].(*mcp.TextContent); ok {
+				raw = []byte(text.Text)
+			}
+		}
+	default:
+		raw, _ = json.Marshal(structured)
+	}
+	var answer map[string]any
+	if json.Unmarshal(raw, &answer) != nil {
+		return false
+	}
+	_, state := answer["state"]
+	reason, _ := answer["reason"].(string)
+	return answer["outcome"] == "unavailable" && !state && reason == ""
+}
+
 func (r *codexReceivingConnection) middleware(next mcp.MethodHandler) mcp.MethodHandler {
 	return func(ctx context.Context, method string, request mcp.Request) (mcp.Result, error) {
 		if (method == "tools/call" || method == "initialize") && request.GetParams() != nil {
-			r.observe(request.GetParams().GetMeta())
+			foreign := r.observe(request.GetParams().GetMeta())
+			if tool, ok := request.(*mcp.CallToolRequest); ok && method == "tools/call" && tool.Params != nil {
+				name := tool.Params.Name
+				if foreign {
+					if codexChatBoundTools[name] {
+						//unchecked: bounded routing label; stderr has no fallback destination
+						fmt.Fprintf(os.Stderr, "OA_CODEX_RECEIVING foreign_thread_refused tool=%s\n", name)
+						return codexChatRefusal("not_permitted", codexForeignThreadReason), nil
+					}
+					ctx = context.WithValue(ctx, codexForeignThreadKey{}, true)
+				} else if codexChatReads[name] {
+					// A bare unavailable read after receiving ended names that
+					// state; admission and runtime answers keep their own.
+					result, err := next(ctx, method, request)
+					if err == nil && codexBareUnavailable(result) && r.ended() {
+						return codexChatRefusal("unavailable", codexReceivingEndedReason), nil
+					}
+					return result, err
+				}
+			}
 		}
 		return next(ctx, method, request)
 	}
@@ -150,7 +247,7 @@ func (r *codexReceivingConnection) addSessionStartTool(server *mcp.Server, b *me
 		r.mu.Lock()
 		bound := r.started && !r.closed
 		r.mu.Unlock()
-		if !bound || codexReceivingPresence(ctx, b) != nil {
+		if !bound || codexForeignThread(ctx) || codexReceivingPresence(ctx, b) != nil {
 			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: `{"outcome":"unavailable"}`}}}, nil
 		}
 		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: `{"outcome":"observed"}`}}}, nil

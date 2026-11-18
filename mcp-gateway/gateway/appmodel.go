@@ -401,11 +401,13 @@ func addAppModelTools(s *mcp.Server, backend AppModelBackend, bounded func(conte
 			return appModelInvalid(ToolApplicationsOpen, err)
 		}
 		var out applications.ActivationResult
-		err = bounded(ctx, func(callCtx context.Context) (err error) {
-			out, err = backend.ApplicationsOpen(callCtx, *open)
+		// The runtime keeps its "Open <app>?" question open while this call
+		// waits, and the person gets at least openPersonFloor to answer it.
+		person := openPersonWait(wait)
+		err = bounded(withBoundedBudget(ctx, person), func(callCtx context.Context) (err error) {
+			out, err = backend.ApplicationsOpen(withCallWait(callCtx, person), *open)
 			if err != nil && callCtx.Err() != nil && ctx.Err() == nil {
-				// The bounded wait ended first: the person may not have answered,
-				// or the application may still be starting.
+				// The wait for the person ended before they answered.
 				out, err = applications.ActivationResult{Outcome: applications.ActivationOutcomeNotReady, Reason: "consent"}, nil
 			}
 			return err
@@ -449,8 +451,8 @@ func appModelOpenSentence(application string, out applications.ActivationResult)
 		return "Opened " + app + ". Use instance " + out.Instance + " with oa_applications_commands_list."
 	case out.Outcome == applications.ActivationOutcomeReady:
 		return app + " is already open. Use instance " + out.Instance + " with oa_applications_commands_list."
-	case out.Outcome == applications.ActivationOutcomeNotReady && out.Reason == "consent":
-		return app + " is not open yet: OpenAbstractions may be waiting for the person or for " + app + " to start. Call oa_applications_open again; the person sees at most one question."
+	case openAwaitingPerson(out):
+		return "The person has not answered OpenAbstractions' question whether to open " + app + " yet. Ask them in this chat to look for it, then call oa_applications_open again; it asks them once more."
 	case out.Outcome == applications.ActivationOutcomeNotReady && strings.HasPrefix(out.Reason, "activation:refused: "):
 		return app + " is not ready: " + strings.TrimPrefix(out.Reason, "activation:refused: ") + ". Call oa_applications_open again later."
 	case out.Outcome == applications.ActivationOutcomeNotReady:

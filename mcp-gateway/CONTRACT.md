@@ -72,7 +72,7 @@ tool today. `scripts/unit_contracts.py` builds the gateway, reads its
 | `oa_api_read` | generated Rights, Logging, Router Models/Hosts and operator readonly methods | read | exact native contract/method/arguments; 1 MiB arguments and reply; 25-second native context | printed |
 | `oa_applications_commands_list` | `abstraction.facade/applications@3` | read | FAC-M32 CommandListing for one live instance; 1 MiB native reply | printed |
 | `oa_applications_command_call` | `abstraction.facade/applications@3` | command | FAC-M32 GatewayCall and exact application answer record; 1 MiB native request/reply | printed |
-| `oa_applications_open` | `abstraction.facade/applications@3` Activate | submit | FAC-M32 declared open verb and payload for a kept application; ActivationResult with the instance and a sentence naming the app by its title; 1 MiB native request/reply | printed |
+| `oa_applications_open` | `abstraction.facade/applications@3` Activate | submit | FAC-M32 declared open verb and payload for a kept application; ActivationResult with the instance and a sentence naming the app by its title; the person gets `wait_ms`, at least 5 and at most 10 minutes, to answer the "Open <app>?" question, and an unanswered question reads `status` `awaiting_permission`; 1 MiB native request/reply | printed |
 | `oa_models_list` | `abstraction.router/router@1`, `abstraction.model/catalog@1` | read | servable names, the stores that hold each model, and the reviewed models Setup sets up here as `setup_needed` entries with profile, download and preset times | printed |
 | `oa_models_connect` | composed `abstraction.asks/permission@1` Request/Observe and `abstraction.router/router@1` Hosts | setup | one fixed catalogue name; native person-only setup, actual submitted question IDs and own-caller servable readback; no key or inference input | printed |
 | `oa_setup_fit` | `abstraction.model/catalog@1` | read | one use; the catalogue's ranked entries with fit word, sizes and the pick, without source or digest | printed |
@@ -239,12 +239,27 @@ The dedicated native Codex composition alone additionally exposes the internal
 MUST refuse arguments. It answers `observed` or `unavailable` and grants no OA
 right, enrollment or vendor identity claim. The call lets the existing receiving
 middleware observe independently supplied host `_meta.threadId`. The first valid
-thread binds the connection. Later missing, invalid or changed thread metadata
-MUST end receiving and join its watcher; that connection MUST never restart or
-retarget receiving. Tool arguments and `session_id` MUST NOT supply this binding.
+thread binds the connection's receiving; the binding MUST never retarget or
+restart while the connection lives. One helper serves a chat and its sub-agent
+threads. A later call with missing, invalid or another thread's metadata leaves
+the binding and its receiver running and is handled per call. Tools that are
+not chat-bound run as before under the helper program's own rights; threads
+gain no authority. `oa_messages_inbox_open`, `oa_messages_wait`,
+`oa_messages_watch`, `oa_messages_send`, `oa_messages_reply` and
+`oa_messages_prepare` act as the bound chat and MUST refuse such a call with
+outcome `not_permitted` and reason "This thread isn't the Codex chat connected
+to OpenAbstractions. Ask the main chat to send it." A refused send MUST NOT
+become a note without a return route. Only the bound thread acts as the chat,
+and no thread's wakes or inbox reach another thread. When receiving has ended
+while the connection is open, the bound thread's inbox open, wait and watch
+answer `unavailable` with reason "receiving ended for this connection; restart
+the OA connection in Codex". Architect ruling 2026-11-22 in
+`backlog/AB-1p.md`. Tool arguments and `session_id` MUST NOT supply this binding.
 The shared generic gateway and other native-agent inventories omit this tool.
-Held by: `TestCodexSessionStartProductionCompositionInventory` and
-`TestCodexSessionStartPrivateToolUsesOnlyHostMetadata`.
+Held by: `TestCodexSessionStartProductionCompositionInventory`,
+`TestCodexSessionStartPrivateToolUsesOnlyHostMetadata`,
+`TestCodexReceivingForeignOrMissingMetadataKeepsTheBinding` and
+`TestChaosCodexForeignThreadKeepsTheChatReceiving`.
 
 Codex runs SessionStart hooks when a thread's first turn begins, and its
 initialize and tools/list requests carry no thread. A restarted Codex Desktop

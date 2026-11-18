@@ -157,7 +157,9 @@ func TestPrivateReleaseFixtureHostRedirectRotationAndRevoke(t *testing.T) {
 	}
 	executionDone := make(chan error, 1)
 	go func() { executionDone <- p.Execute(ctx) }()
-	defer func() { cancel(); <-executionDone }()
+	var stopOnce sync.Once
+	stopExecution := func() { stopOnce.Do(func() { cancel(); <-executionDone }) }
+	defer stopExecution()
 	var retained []any
 	perform := func(key, path string, want api.AcceptanceOutcome) {
 		t.Helper()
@@ -239,6 +241,9 @@ func TestPrivateReleaseFixtureHostRedirectRotationAndRevoke(t *testing.T) {
 			t.Fatal("credential entered job/reply/audit")
 		}
 	}
+	// Stop the executor so the job store releases its sidecar byte-range locks
+	// before every retained file, lock sidecars included, is scanned.
+	stopExecution()
 	if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err

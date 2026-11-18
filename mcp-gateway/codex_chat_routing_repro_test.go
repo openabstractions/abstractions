@@ -92,18 +92,17 @@ func TestChaosCodexRoutingBoundAdvertisement(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	// A call without thread metadata runs and leaves the binding and its
+	// advertised route in place (architect ruling 2026-11-22).
 	out, err := helpers[5].session.CallTool(ctx, &mcp.CallToolParams{Name: gateway.ToolModels, Arguments: map[string]any{}})
 	if err != nil || out.IsError {
-		t.Fatal("invalidation discarded ordinary tool availability", out, err)
+		t.Fatal("a call without metadata lost ordinary tool availability", out, err)
 	}
-	waitCount(1)
-	// The source connection still serves ordinary tools after invalidation.
-	out, err = helpers[5].session.CallTool(ctx, &mcp.CallToolParams{Name: gateway.ToolModels, Arguments: map[string]any{}})
-	if err != nil || out.IsError {
-		t.Fatal("source owner lost after invalidation", out, err)
-	}
-	waitCount(1)
+	time.Sleep(200 * time.Millisecond)
+	waitCount(2)
 	other.close()
+	waitCount(1)
+	helpers[5].close()
 	waitCount(0)
 	for _, h := range helpers[:4] {
 		if r := h.record(); r.Receiving != nil && r.Receiving.Thread != "" {

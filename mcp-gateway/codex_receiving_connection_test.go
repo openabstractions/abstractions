@@ -9,6 +9,7 @@ import (
 	watchwire "github.com/openabstractions/abstraction-facade/go/abstraction/facade/messages"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -580,9 +581,13 @@ func TestCodexReceivingBackgroundWatchDoesNotBlockMCPReadAndReply(t *testing.T) 
 	calls.Wait()
 }
 
-func TestCodexReceivingChangedOrMissingMetadataCancelsAndJoins(t *testing.T) {
+// Architect ruling 2026-11-22 (backlog/AB-1p.md): a bound connection keeps
+// its receiver for a call with missing, invalid or another thread's metadata,
+// reports that call as foreign, and never retargets.
+func TestCodexReceivingForeignOrMissingMetadataKeepsTheBinding(t *testing.T) {
 	for _, meta := range []mcp.Meta{nil, {"threadId": "wrong"}, {"threadId": "22222222-2222-4222-8222-222222222222"}} {
-		t.Run("changed", func(t *testing.T) {
+		t.Run("foreign", func(t *testing.T) {
+			bound := mcp.Meta{"threadId": "11111111-1111-4111-8111-111111111111"}
 			entered, finished := make(chan struct{}), make(chan struct{})
 			var starts atomic.Int32
 			r := newCodexReceivingConnection(context.Background(), func(ctx context.Context, _ string) error {
@@ -593,19 +598,60 @@ func TestCodexReceivingChangedOrMissingMetadataCancelsAndJoins(t *testing.T) {
 				return ctx.Err()
 			}, func(string) {})
 			defer r.stop("test_end")
-			r.observe(mcp.Meta{"threadId": "11111111-1111-4111-8111-111111111111"})
+			if r.observe(bound) {
+				t.Fatal("first thread reported foreign")
+			}
 			<-entered
-			r.observe(meta)
+			if !r.observe(meta) {
+				t.Fatal("foreign metadata not reported")
+			}
 			select {
 			case <-finished:
+				t.Fatal("foreign metadata stopped the receiver")
 			default:
-				t.Fatal("metadata refusal returned before receiver joined")
 			}
-			r.observe(mcp.Meta{"threadId": "33333333-3333-4333-8333-333333333333"})
-			if starts.Load() != 1 {
-				t.Fatal("closed binding retargeted")
+			if r.observe(bound) || r.ended() {
+				t.Fatal("bound thread lost its binding")
+			}
+			if !r.observe(mcp.Meta{"threadId": "33333333-3333-4333-8333-333333333333"}) || starts.Load() != 1 {
+				t.Fatal("binding retargeted")
+			}
+			r.stop("test_end")
+			if !r.ended() {
+				t.Fatal("stopped receiving not reported as ended")
 			}
 		})
+	}
+}
+
+// Architect ruling 2026-11-22: once receiving has ended on an open
+// connection, the bound thread's bare unavailable chat read names that state.
+// Admission answers with their own state pass through unchanged.
+func TestCodexReceivingEndedReadNamesTheState(t *testing.T) {
+	r := newCodexReceivingConnection(context.Background(), func(ctx context.Context, _ string) error { <-ctx.Done(); return ctx.Err() }, func(string) {})
+	bound := mcp.Meta{"threadId": "11111111-1111-4111-8111-111111111111"}
+	answer := `{"outcome":"unavailable"}`
+	call := r.middleware(func(context.Context, string, mcp.Request) (mcp.Result, error) {
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: answer}}, StructuredContent: json.RawMessage(answer)}, nil
+	})
+	read := func() string {
+		t.Helper()
+		out, err := call(context.Background(), "tools/call", &mcp.ServerRequest[*mcp.CallToolParamsRaw]{Params: &mcp.CallToolParamsRaw{Meta: bound, Name: gateway.ToolMessagesWait, Arguments: json.RawMessage(`{}`)}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out.(*mcp.CallToolResult).Content[0].(*mcp.TextContent).Text
+	}
+	if got := read(); got != answer {
+		t.Fatal("live receiving rewrote the answer", got)
+	}
+	r.stop("test_end")
+	if got := read(); !strings.Contains(got, codexReceivingEndedReason) {
+		t.Fatal("ended receiving answered a bare unavailable", got)
+	}
+	answer = `{"outcome":"unavailable","state":"refused"}`
+	if got := read(); got != answer {
+		t.Fatal("admission state replaced", got)
 	}
 }
 
@@ -688,10 +734,18 @@ func TestCodexSessionStartPrivateToolUsesOnlyHostMetadata(t *testing.T) {
 		t.Fatal(ctx.Err())
 	}
 	if !call(nil, map[string]any{}).IsError {
-		t.Fatal("metadata loss retained receiving")
+		t.Fatal("a call without metadata observed the bound chat")
 	}
-	if !call(mcp.Meta{"threadId": thread}, map[string]any{}).IsError {
-		t.Fatal("closed binding restarted")
+	if !call(mcp.Meta{"threadId": "22222222-2222-4222-8222-222222222222"}, map[string]any{}).IsError {
+		t.Fatal("another thread observed the bound chat")
+	}
+	if call(mcp.Meta{"threadId": thread}, map[string]any{}).IsError {
+		t.Fatal("foreign calls ended the bound thread's receiving")
+	}
+	select {
+	case got := <-started:
+		t.Fatal("binding restarted", got)
+	default:
 	}
 }
 

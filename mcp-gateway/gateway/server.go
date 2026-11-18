@@ -380,7 +380,7 @@ func newServer(backend Backend, messagesOnly bool, narrow ...bool) *mcp.Server {
 				return errors.New("gateway: concurrent request limit reached")
 			}
 		}
-		callCtx, cancel := context.WithTimeout(withSetupTool(ctx, canSetup), 2*time.Minute)
+		callCtx, cancel := context.WithTimeout(withSetupTool(ctx, canSetup), boundedBudget(ctx))
 		defer cancel()
 		if err := callCtx.Err(); err != nil {
 			return err

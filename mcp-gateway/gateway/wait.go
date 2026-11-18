@@ -70,12 +70,40 @@ func waitingBudget(name string, raw json.RawMessage) (time.Duration, bool) {
 		// An application command is one synchronous call: wait_ms is its
 		// whole budget, two minutes unless the agent sets it.
 		return waitArgument(raw, appCommandWait) + callFinishRoom, true
+	case ToolApplicationsOpen:
+		// An open waits for the person's answer (openPersonWait), then
+		// follows the start for wait_ms.
+		_, _, wait, err := openArguments(raw)
+		if err != nil {
+			wait = openWaitDefault
+		}
+		return openPersonWait(wait) + wait + callFinishRoom, true
 	}
 	return 0, false
 }
 
 // appCommandWait is an application command's budget when wait_ms is unset.
 const appCommandWait = 2 * time.Minute
+
+// boundedCallWait is the budget of one backend call inside a tool when the
+// tool sets none.
+const boundedCallWait = 2 * time.Minute
+
+type boundedBudgetKey struct{}
+
+// withBoundedBudget gives the backend calls a tool makes through bounded a
+// budget other than boundedCallWait: an open's wait for the person.
+func withBoundedBudget(ctx context.Context, budget time.Duration) context.Context {
+	return context.WithValue(ctx, boundedBudgetKey{}, budget)
+}
+
+// boundedBudget is the budget bounded gives one backend call.
+func boundedBudget(ctx context.Context) time.Duration {
+	if budget, ok := ctx.Value(boundedBudgetKey{}).(time.Duration); ok && budget > 0 {
+		return budget
+	}
+	return boundedCallWait
+}
 
 type callWaitKey struct{}
 

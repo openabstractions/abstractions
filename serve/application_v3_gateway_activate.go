@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode"
 
+	asks "github.com/openabstractions/abstraction-asks/go"
 	"github.com/openabstractions/abstraction-facade/go/abstraction/facade/applications"
 	"github.com/openabstractions/abstraction-facade/go/abstraction/facade/appmodel"
 	"github.com/openabstractions/abstraction-facade/go/client"
@@ -392,13 +393,17 @@ func (g *applicationV3Gateway) openAuthorization(ctx context.Context, c applicat
 	return result
 }
 
-// applicationV3AnswerWait bounds how long an open waits for the person's
-// answer: the wait policy's default of 40 s (backlog/RIGHTS-FLOW.md "Wait
-// policy", owner 2026-11-10) until the person's "Wait for my answer" setting
-// exists. A wait that runs out reads not_ready/consent; the question stays
-// answerable where its owner keeps it, and the next open finds the answer.
-// Tests shorten it.
-var applicationV3AnswerWait = 40 * time.Second
+// applicationV3AnswerWait is the longest an open waits for the person's
+// answer. Within it the wait lasts as long as the caller waits (CLAUDE.md:
+// timeouts derive from the caller): the question stays open while the
+// caller's call is connected, and the caller's leaving withdraws it
+// (FAC-M32). The MCP binding waits at least several minutes for a person
+// (mcp-gateway openPersonWait). The bound is the Book's own pending
+// lifetime, so the expiry the question states is one the Book keeps. The
+// fixed 40 s bound this replaces closed the popup before a person noticed
+// it (installed check 2026-11-21). A wait that runs out reads
+// not_ready/consent. Tests shorten it.
+var applicationV3AnswerWait = asks.DefaultPendingLifetime
 
 // applicationV3OpenRefusal is an unauthorized open's answer. A wait that
 // ended before the person answered reads not_ready/consent; the person's
@@ -536,8 +541,9 @@ func (g *applicationV3Gateway) activateKept(ctx context.Context, c applicationV3
 	// agent's start: an agent never starts a stopped application under a
 	// standing or answerer-written permit (coordinator, 2026-11-09).
 	personStart := false
-	// The wait for the person's answer has its own bound (applicationV3AnswerWait);
-	// the start after an Allow keeps the caller's remaining budget.
+	// The wait for the person's answer lasts while the caller waits, within
+	// applicationV3AnswerWait; the start after an Allow keeps the caller's
+	// remaining budget.
 	answerCtx, endAnswer := context.WithTimeout(ctx, applicationV3AnswerWait)
 	defer endAnswer()
 	if !sensitive || token == nil {
@@ -600,8 +606,8 @@ func (g *applicationV3Gateway) activateKept(ctx context.Context, c applicationV3
 	if s == nil {
 		if !operator && !personStart {
 			// The application stopped after the earlier check: its start
-			// still waits for the person's own answer, bounded like the
-			// first ask by applicationV3AnswerWait.
+			// still waits for the person's own answer while the caller
+			// waits, within applicationV3AnswerWait like the first ask.
 			reask, endReask := context.WithTimeout(ctx, applicationV3AnswerWait)
 			authorization, personStart = g.openAuthorization(reask, c, k, v, call, key, canonical), true
 			if authorization.outcome != "" {

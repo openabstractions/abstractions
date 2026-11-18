@@ -37,7 +37,19 @@ const (
 	openHandleLife  = time.Hour
 	openHandleLimit = 64
 	startupContext  = "startup"
+	// openPersonFloor is the least time an open waits for the person to
+	// answer OA's "Open <app>?" question. The runtime keeps the question
+	// open while this call waits and withdraws it when the call leaves; a
+	// person needs minutes to notice a popup (installed check 2026-11-21,
+	// where a 40 s wait closed every question unseen).
+	openPersonFloor = 5 * time.Minute
 )
+
+// openPersonWait is how long an open waits for the person's answer: the
+// caller's wait_ms, at least openPersonFloor and at most openWaitMax.
+func openPersonWait(wait time.Duration) time.Duration {
+	return min(max(wait, openPersonFloor), openWaitMax)
+}
 
 // openPhaseWords are the person-facing words of each starting phase.
 var openPhaseWords = map[string]string{
@@ -307,6 +319,10 @@ func openAnswer(application string, out applications.ActivationResult, handle, p
 	if out.Outcome == applications.ActivationOutcomeReady {
 		status = "opened"
 	}
+	awaiting := openAwaitingPerson(out)
+	if awaiting {
+		status = awaitingPermission
+	}
 	if handle != "" {
 		status = "starting"
 		record["phase"] = openPhaseWord(phase)
@@ -321,8 +337,9 @@ func openAnswer(application string, out applications.ActivationResult, handle, p
 	if err != nil {
 		return nil, err
 	}
-	// A start in progress is no failure: the agent follows it by handle.
-	result.IsError = result.IsError && handle == ""
+	// A start in progress is no failure: the agent follows it by handle. A
+	// question the person has not answered yet is none either.
+	result.IsError = result.IsError && handle == "" && !awaiting
 	sentence := appModelOpenSentence(application, out)
 	if handle != "" {
 		app := application
@@ -337,6 +354,16 @@ func openAnswer(application string, out applications.ActivationResult, handle, p
 	}
 	result.Content = append(result.Content, &mcp.TextContent{Text: sentence, Annotations: &mcp.Annotations{Audience: []mcp.Role{"assistant"}}})
 	return result, nil
+}
+
+// awaitingPermission is the status of an open whose question the person has
+// not answered yet, the word the permission results use for the same state.
+const awaitingPermission = "awaiting_permission"
+
+// openAwaitingPerson reports the runtime's not_ready/consent: the wait for
+// the person's answer to "Open <app>?" ended before they answered (FAC-M32).
+func openAwaitingPerson(out applications.ActivationResult) bool {
+	return out.Outcome == applications.ActivationOutcomeNotReady && out.Reason == "consent"
 }
 
 func openPhaseWord(phase string) string {

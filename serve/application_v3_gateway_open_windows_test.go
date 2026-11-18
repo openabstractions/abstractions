@@ -512,10 +512,11 @@ func TestApplicationV3GatewayConcurrentFirstOpensAskOnce(t *testing.T) {
 	}
 }
 
-// Wait policy (owner, 2026-11-10): an open waits for the person's answer for
-// applicationV3AnswerWait and then answers not_ready/consent, whatever budget
-// the caller gave. Before, the wait lasted the caller's whole deadline and
-// the Panel's Open ended in a bare "context deadline exceeded".
+// An open waits for the person's answer while its caller waits, at most
+// applicationV3AnswerWait (the Book's pending lifetime), and then answers
+// not_ready/consent. Tests shorten the bound; a caller that waits longer
+// than it still gets that answer instead of a bare "context deadline
+// exceeded".
 func TestApplicationV3GatewayOpenAnswerWaitIsBounded(t *testing.T) {
 	saved := applicationV3AnswerWait
 	applicationV3AnswerWait = time.Second

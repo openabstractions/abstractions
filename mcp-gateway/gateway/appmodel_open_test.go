@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/openabstractions/abstraction-facade/go/abstraction/facade/applications"
@@ -256,6 +257,58 @@ func TestAppJobTakesTheCallsInstance(t *testing.T) {
 	} {
 		if got := appJobArguments(row[0], row[1], "i1"); got != row[2] {
 			t.Fatalf("%s %s: %s", row[0], row[1], got)
+		}
+	}
+}
+
+// personWaitApp records the budget each open's native Activate receives and
+// answers that the person has not answered yet.
+type personWaitApp struct {
+	*appModelFixture
+	mu        sync.Mutex
+	remaining []time.Duration
+	budgets   []time.Duration
+}
+
+func (b *personWaitApp) ApplicationsOpen(ctx context.Context, request applications.ActivateRequest) (applications.ActivationResult, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	deadline, _ := ctx.Deadline()
+	b.remaining = append(b.remaining, time.Until(deadline))
+	b.budgets = append(b.budgets, appCommandBudget(ctx))
+	return applications.ActivationResult{Outcome: applications.ActivationOutcomeNotReady, Reason: "consent", Title: "ComfyUI"}, nil
+}
+
+// Installed check 2026-11-21: the runtime withdrew every "Open ComfyUI?"
+// question when its open stopped waiting, 40 s after it was asked, and the
+// agent read the bare not_ready/consent as "could not reach ComfyUI". The
+// open now waits at least openPersonFloor for the person, or the caller's
+// longer wait_ms, and an unanswered question reads awaiting_permission with
+// a sentence that says the person has not answered yet.
+func TestOpenWaitsMinutesForThePersonAndSaysTheyHaveNotAnswered(t *testing.T) {
+	b := &personWaitApp{appModelFixture: &appModelFixture{fixtureBackend: &fixtureBackend{}}}
+	_, session := connected(t, b, "untrusted-metadata", "2026-07-28")
+	for _, c := range []struct {
+		args string
+		want time.Duration
+	}{
+		{`{"application":"comfyui","verb":"open","payload":{}}`, openPersonFloor},
+		{`{"application":"comfyui","verb":"open","payload":{},"wait_ms":120000}`, openPersonFloor},
+		{`{"application":"comfyui","verb":"open","payload":{},"wait_ms":420000}`, 7 * time.Minute},
+		{`{"application":"comfyui","verb":"open","payload":{},"wait_ms":3600000}`, openWaitMax},
+	} {
+		got, sentence := openCall(t, session, c.args)
+		if got["outcome"] != "not_ready" || got["reason"] != "consent" || got["status"] != "awaiting_permission" || got["is_error"] != false {
+			t.Fatalf("%s: %+v", c.args, got)
+		}
+		if sentence != "The person has not answered OpenAbstractions' question whether to open ComfyUI yet. Ask them in this chat to look for it, then call oa_applications_open again; it asks them once more." {
+			t.Fatalf("%s: sentence %q", c.args, sentence)
+		}
+		b.mu.Lock()
+		remaining, budget := b.remaining[len(b.remaining)-1], b.budgets[len(b.budgets)-1]
+		b.mu.Unlock()
+		if budget != c.want || remaining < c.want-5*time.Second || remaining > c.want {
+			t.Fatalf("%s: the native open waits %v with transport budget %v, want %v", c.args, remaining, budget, c.want)
 		}
 	}
 }

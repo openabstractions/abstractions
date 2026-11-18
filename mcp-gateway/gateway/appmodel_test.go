@@ -434,7 +434,7 @@ func TestAppModelOpenToolSchemaAndAnswer(t *testing.T) {
 	if open.Description != appModelOpenDescription {
 		t.Fatalf("listed open description: %s", open.Description)
 	}
-	if asking := call(`{"application":"asking","verb":"open","payload":{}}`); asking["outcome"] != "not_ready" || asking["is_error"] != true || !strings.Contains(asking["sentence"].(string), "asking is not open yet: OpenAbstractions may be waiting for the person or for asking to start.") {
+	if asking := call(`{"application":"asking","verb":"open","payload":{}}`); asking["outcome"] != "not_ready" || asking["status"] != "awaiting_permission" || asking["is_error"] != false || !strings.Contains(asking["sentence"].(string), "The person has not answered OpenAbstractions' question whether to open asking yet.") {
 		t.Fatalf("waiting: %+v", asking)
 	}
 	for _, invalid := range []struct{ args, reason, sentence string }{
