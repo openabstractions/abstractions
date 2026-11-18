@@ -33,6 +33,8 @@ func TestMessagePermissionSameAppGrantPath(t *testing.T) {
 	f.run.d.agentExcluded = func(context.Context, string, string) (bool, error) { return true, nil }
 	shared, err := client.RequestContext(ctx, messagePermissionIntent("native-agent", "same-app-shared"))
 	f.run.d.agentExcluded = excluded
+	// The swapped seam changed no file stamp; drop the verdicts it produced.
+	f.run.d.agentImages.forget()
 	if err != nil || shared.Outcome == askswire.PermissionOutcomePending || shared.Outcome == askswire.PermissionOutcomePermitted {
 		t.Fatal("a shared caller asked for the same-app direction", shared, err)
 	}

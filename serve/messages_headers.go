@@ -262,6 +262,11 @@ func (o *messageObserver) headerSnapshot() (msg.Page, error) {
 	var unread, pendingQuestions, oldestUnreadAt, newestUnreadAt int64
 	var wake, oldestWake string
 	observed := store.now().UnixMilli()
+	// One snapshot reads each sender's and receiver's enrollment once, as a
+	// body snapshot does. Each listed message and event names the same few
+	// agents; reading them per message made one snapshot dozens of enrollment
+	// reads, each under the directory lock.
+	pass := newMessageProgressPass()
 	for _, ref := range refs {
 		record, err := store.readRecord(r.ctx, ref.Key)
 		if err != nil {
@@ -277,7 +282,7 @@ func (o *messageObserver) headerSnapshot() (msg.Page, error) {
 		if err != nil {
 			return msg.Page{}, err
 		}
-		visible, err := o.headerPermitted(ref.Key, record, false)
+		visible, err := o.headerPermitted(ref.Key, record, false, pass)
 		if err != nil {
 			return msg.Page{}, err
 		}
@@ -370,7 +375,7 @@ func (o *messageObserver) headerSnapshot() (msg.Page, error) {
 		if record.ExpiresUnixMs <= store.now().UnixMilli() {
 			continue
 		}
-		visible, err := o.headerPermitted(ref.Key, record, true)
+		visible, err := o.headerPermitted(ref.Key, record, true, pass)
 		if err != nil {
 			return msg.Page{}, err
 		}
@@ -460,7 +465,7 @@ func (o *messageObserver) headerSnapshot() (msg.Page, error) {
 	return page, nil
 }
 
-func (o *messageObserver) headerPermitted(key string, record *messageRecord, outgoing bool) (bool, error) {
+func (o *messageObserver) headerPermitted(key string, record *messageRecord, outgoing bool, pass *messageProgressPass) (bool, error) {
 	r := o.r
 	request, err := decodeRetainedMessageRequest(record.Spec)
 	if err != nil {
@@ -484,6 +489,6 @@ func (o *messageObserver) headerPermitted(key string, record *messageRecord, out
 			return false, errors.New("messages: incoming header scope mismatch")
 		}
 	}
-	state, permitted, err := r.host.reconcileMessageState(r.ctx, key, record)
+	state, permitted, err := r.host.reconcileMessageStateIn(r.ctx, key, record, pass)
 	return permitted && !state.Held && !state.Refused, err
 }

@@ -126,9 +126,11 @@ func (s graphEditEnrollment) recheck(ctx context.Context, d *applicationDirector
 // prepareGraphEditAllow is the save side of the same scope. An operator can
 // answer only a retained typed occurrence, whose parties are re-proved before
 // Rights sees the Allow. Undo can remove the old exact rule even after rebind.
+// The requester's image is verified in full, as a message permission's Allow
+// verifies its parties.
 func (d *applicationDirectory) prepareGraphEditAllow(ctx context.Context, effect rights.PermissionEffect, target grants.KeptApplicationClassTarget) (func(context.Context) error, func(), error) {
 	var image applicationAgentImage
-	current := d.currentAgentEnrollmentImage(ctx, catalogueAgentApplication, &image)
+	current := d.currentAgentEnrollmentVerified(ctx, catalogueAgentApplication, &image)
 	if current.Outcome != applications.OutcomePage || current.Enrollment == nil || current.Enrollment.State != applications.AgentEnrollmentStateEnrolled || current.Enrollment.Revision != target.Enrollment {
 		return nil, nil, errors.New("application graph edit: requester enrollment changed")
 	}

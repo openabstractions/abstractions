@@ -7,20 +7,24 @@ import (
 	"time"
 )
 
-// applicationAgentImageRecheck bounds how long admission reuses one verified
-// agent image while its file stamp stays unchanged. Admission runs on every
-// 100 ms native inbox check and on each message request; a full verification
-// opens the image twice, verifies its whole Authenticode signature and
-// resolves the installed gateway through the MSI owner. The stamp, read on
-// every check, notices a replaced, relinked, hard-linked or ordinarily rewritten
-// image at the next check. On Windows, a deliberate same-user in-place rewrite
-// that restores FILE_BASIC_INFO, including ChangeTime, can retain the verdict
-// for at most 60 seconds from the last full verification; cache hits never
-// extend that interval. The interval also covers the facts the stamp cannot
-// see: a change in certificate trust or revocation, and a reinstall that moves
-// the shared gateway onto this same file. Both are administrative changes a
-// person makes on a scale of minutes, so one minute keeps them current while
-// removing all but one verification in 600 checks.
+// applicationAgentImageRecheck bounds how long admission and the current
+// enrollment read reuse one verified agent image while its file stamp stays
+// unchanged. Admission runs on every native inbox check and on each message
+// request. The enrollment read runs for the sender and receiver of the
+// messages a headers or body read, a listing or a progress pass reconciles;
+// on the owner's PC in 0.8.0 it verified each connected helper ten times a
+// second and kept 1.5 cores busy. A full verification opens the image twice,
+// verifies its whole Authenticode signature and resolves the installed
+// gateway through the MSI owner. The stamp, read on every check, notices a
+// replaced, relinked, hard-linked or ordinarily rewritten image at the next
+// check. On Windows, a deliberate same-user in-place rewrite that restores
+// FILE_BASIC_INFO, including ChangeTime, can retain the verdict for at most 60
+// seconds from the last full verification; cache hits never extend that
+// interval. The interval also covers the facts the stamp cannot see: a change
+// in certificate trust or revocation, and a reinstall that moves the shared
+// gateway onto this same file. Both are administrative changes a person makes
+// on a scale of minutes, so one minute keeps them current while removing all
+// but one verification in 600 checks.
 const applicationAgentImageRecheck = time.Minute
 
 // applicationAgentStamp is the cheap per-check observation of an agent image:
@@ -81,7 +85,8 @@ func (d *applicationDirectory) verifyAgentImage(ctx context.Context, program, bi
 	return image, nil
 }
 
-// admittedAgentImage is verifyAgentImage for admission checks. It reuses the
+// admittedAgentImage is verifyAgentImage for admission checks and the current
+// enrollment read. It reuses the
 // last verification of program and binding while the image's stamp is
 // unchanged, names the verified file key and is younger than
 // applicationAgentImageRecheck. Any other case verifies again. An image whose

@@ -285,6 +285,8 @@ func TestMessagingFactsOldRefreshCannotPublishAfterRegistrationMutation(t *testi
 		once.Do(func() { close(entered); <-release })
 		return old(ctx, program, binding)
 	}
+	// The seam changed no file stamp; drop the fixture's cached verdicts.
+	run.d.agentImages.forget()
 	done := make(chan error, 1)
 	go func() { done <- run.d.refreshMessageParties(run.ctx) }()
 	select {
@@ -402,6 +404,8 @@ func TestMessagingPartyUncertaintyNeverMeansNoRelation(t *testing.T) {
 				run.d.agentImage = func(context.Context, string, string) (applicationAgentImage, error) {
 					return applicationAgentImage{}, errors.New("image unavailable")
 				}
+				// The seam changed no file stamp; drop the cached verdicts.
+				run.d.agentImages.forget()
 				restore = func() { run.d.agentImage = old }
 			case "policy":
 				old := f.a.rights.policy

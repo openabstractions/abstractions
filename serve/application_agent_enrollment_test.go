@@ -57,9 +57,12 @@ func expireAgentQuestionFixture(t *testing.T, run *selfRegisteredRun) {
 		t.Fatal(err)
 	}
 	// A normal unrelated fixture admission persists ordinary expiry. No
-	// question is answered, and no live account data is used.
-	if _, _, err := run.f.a.book.AskApplicationFrom("fixture-expiry", "runtime", "expiry-cleanup", asks.SelfRegisteredKey, map[string]string{"program": run.f.cli.Program, "title": "Expiry fixture"}, listen.Seen{}, asks.Publisher{}); err != nil {
-		t.Fatal(err)
+	// question is answered, and no live account data is used. Its slots are
+	// short: a slot longer than asks' bound refuses the ask without writing,
+	// and a long temporary folder made the fixture's program path that long.
+	asked, outcome, err := run.f.a.book.AskApplicationFrom("fixture-expiry", "runtime", "expiry-cleanup", asks.SelfRegisteredKey, map[string]string{"program": "expiry-fixture.exe", "title": "Expiry fixture"}, listen.Seen{}, asks.Publisher{})
+	if err != nil || asked.ID == "" {
+		t.Fatal("expiry fixture ask was not written", outcome, err)
 	}
 	if err := run.f.a.book.SetPendingLifetime(asks.DefaultPendingLifetime); err != nil {
 		t.Fatal(err)

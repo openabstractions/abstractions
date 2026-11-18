@@ -299,7 +299,20 @@ func (d *applicationDirectory) currentAgentEnrollment(ctx context.Context, name 
 // capture exposes the image owner's already-validated canonical Program/Key to
 // private receiving composition. It performs no consumer normalization and
 // grants no authority beyond the unchanged enrollment/image/person checks.
+// The image check reuses admission's verification while the program file's
+// stamp is unchanged (admittedAgentImage).
 func (d *applicationDirectory) currentAgentEnrollmentImage(ctx context.Context, name string, capture *applicationAgentImage) applications.AgentEnrollmentResult {
+	return d.currentAgentEnrollmentChecked(ctx, name, capture, d.admittedAgentImage)
+}
+
+// currentAgentEnrollmentVerified is currentAgentEnrollmentImage with a full
+// image verification. A message permission request and its Allow capture
+// their parties with it, as enrollment writes capture the image.
+func (d *applicationDirectory) currentAgentEnrollmentVerified(ctx context.Context, name string, capture *applicationAgentImage) applications.AgentEnrollmentResult {
+	return d.currentAgentEnrollmentChecked(ctx, name, capture, d.verifyAgentImage)
+}
+
+func (d *applicationDirectory) currentAgentEnrollmentChecked(ctx context.Context, name string, capture *applicationAgentImage, check func(context.Context, string, string) (applicationAgentImage, error)) applications.AgentEnrollmentResult {
 	if capture != nil {
 		*capture = applicationAgentImage{}
 	}
@@ -339,8 +352,10 @@ func (d *applicationDirectory) currentAgentEnrollmentImage(ctx context.Context, 
 	}
 	if out.Enrollment != nil && out.Enrollment.State != applications.AgentEnrollmentStateNone {
 		// Check the image of the same registration that supplied the enrollment.
-		// A second directory read can pair it with a newer registration.
-		image, err := d.verifyAgentImage(ctx, out.Enrollment.Program, registrationBinding)
+		// A second directory read can pair it with a newer registration. A
+		// replaced or rewritten program file is verified again before this
+		// read trusts it.
+		image, err := check(ctx, out.Enrollment.Program, registrationBinding)
 		if err != nil {
 			if errors.Is(err, errApplicationAgentSharedGateway) {
 				out.Enrollment.State = applications.AgentEnrollmentStateNone

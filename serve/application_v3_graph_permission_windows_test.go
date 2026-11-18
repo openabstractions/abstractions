@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -211,9 +212,29 @@ func TestNativeGraphEditAllowAndRevocation(t *testing.T) {
 	if result, err := a.preparePermission(ctx, peer, intent); err != nil || result.Outcome == askswire.PermissionOutcomePending {
 		t.Fatalf("direct Asks request was admitted: %+v %v", result, err)
 	}
+	// The Allow verifies the requester's image in full, with an unchanged
+	// file and a fresh cached verdict for it.
+	read := d.agentImage
+	if read == nil {
+		read = readApplicationAgentImage
+	}
+	var requesterReads atomic.Int64
+	d.agentImage = func(ctx context.Context, program, binding string) (applicationAgentImage, error) {
+		if identity.SameSubjectProgram(program, mark.Program) {
+			requesterReads.Add(1)
+		}
+		return read(ctx, program, binding)
+	}
+	if _, err := d.admittedAgentImage(ctx, mark.Program, mark.Agent.Binding); err != nil {
+		t.Fatal(err)
+	}
+	cached := requesterReads.Load()
 	allow, err := grants.AnswerPermissionQuestion(ctx, questions, policy, d.owner, request.ID, "allow")
 	if err != nil || allow.Edit == nil || allow.Edit.Outcome != rights.PolicyEditOutcomeApplied {
 		t.Fatalf("save graph Allow: %+v %v", allow, err)
+	}
+	if requesterReads.Load() == cached {
+		t.Fatal("graph Allow trusted the cached requester image verdict")
 	}
 	requireApplied(<-pending)
 	replay, err := caller.Call(key, call)

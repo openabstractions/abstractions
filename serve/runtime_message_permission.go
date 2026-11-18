@@ -100,7 +100,7 @@ func (a *runtimeAsks) messagePermissionGuard(ctx context.Context, effect rwire.P
 			role = "receiver"
 		}
 		var image applicationAgentImage
-		current := d.currentAgentEnrollmentImage(ctx, expected.Name, &image)
+		current := d.currentAgentEnrollmentVerified(ctx, expected.Name, &image)
 		if current.Outcome != applications.OutcomePage {
 			return nil, messageConsentFailure(ctx, role, "unavailable", current, []string{"none"})
 		}
@@ -177,7 +177,7 @@ func (a *runtimeAsks) otherMessageReceivers(ctx context.Context, subject rwire.S
 			continue
 		}
 		var receiver applicationAgentImage
-		target := d.currentAgentEnrollmentImage(ctx, agent.name, &receiver)
+		target := d.currentAgentEnrollmentVerified(ctx, agent.name, &receiver)
 		if !messageReceiverEligible(sender, target, receiver) {
 			continue
 		}
@@ -258,7 +258,7 @@ func (a *runtimeAsks) prepareMessagePermission(ctx context.Context, peer *identi
 		return unavailable("receiver lookup", err)
 	}
 	var receiver applicationAgentImage
-	target := d.currentAgentEnrollmentImage(ctx, name, &receiver)
+	target := d.currentAgentEnrollmentVerified(ctx, name, &receiver)
 	sameApp := messageSameAppEligible(sender, target, receiver)
 	if !sameApp && !messageReceiverEligible(sender, target, receiver) {
 		return refuse(askswire.PermissionOutcomeForbidden)

@@ -22,11 +22,13 @@ func (h *applicationsHost) reconcileMessageState(ctx context.Context, key string
 
 // messageProgressPass is one bounded progress pass's observation of agent
 // enrollments. The records of one expiry slice name the same few agents; each
-// enrollment read takes the directory lock, the registration CAS and a full
-// native image verification. One pass reads each agent once, so a slice of
-// live records fits the worker's budget instead of exceeding it on every tick.
-// A pass lasts at most that budget; the next pass observes again. An inbox
-// read keeps one for the records it reconciles.
+// enrollment read takes the directory lock and reads the registration store
+// under it, then checks the registered image, which a changed file stamp or a
+// minute's age verifies again in full (admittedAgentImage). One pass reads
+// each agent once, so a slice of live records fits the worker's budget instead
+// of exceeding it on every tick. A pass lasts at most that budget; the next
+// pass observes again. A body or headers read keeps one for the records it
+// reconciles.
 type messageProgressPass struct {
 	mu     sync.Mutex
 	agents map[string]messageProgressAgent

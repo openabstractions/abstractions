@@ -126,6 +126,8 @@ func agentUpdateFixtureWithImage(t *testing.T, configure func(*selfRegisteredRun
 		request.Members = append(request.Members, applications.AgentUpdateMember{Application: name, ExpectedRevision: pending.Revision, StagedProgram: stage})
 	}
 	run.d.agentExcluded = func(_ context.Context, program, key string) (bool, error) { return identity.SameFile(program, source) }
+	// The new seam changed no file stamp; drop the verdicts taken before it.
+	run.d.agentImages.forget()
 	return run, request
 }
 func prepareAgentUpdateFixture(t *testing.T, run *selfRegisteredRun, request applications.AgentUpdateRequest) applications.AgentUpdateResult {
