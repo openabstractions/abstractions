@@ -9,6 +9,7 @@ import sys
 import subprocess
 import shutil
 import unittest
+import zipfile
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -410,6 +411,38 @@ int main(int argc,char**argv) {
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
         return path
+
+    def package_wix_fixture(self, path, sources_root, *, shim=b'fixture apphost '):
+        store = path.parent / '.store/wix/5.0.2/wix/5.0.2'
+        payload = {'wix.dll': b'fixture managed WiX 5.0.2', 'wix.runtimeconfig.json': b'{}'}
+        package = store / 'wix.5.0.2.nupkg'
+        package.parent.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(package, 'w') as archive:
+            for name, data in payload.items():
+                archive.writestr('tools/net6.0/any/' + name, data)
+                self.put(store, 'tools/net6.0/any/' + name, data)
+        policy = {'wix': dict(file=package.name, **recipe.pin(package))}
+        repository = Path(__file__).resolve().parents[2]
+        selected = os.environ.get('OA_LEMONADE_WIX_PACKAGES_OWNER')
+        candidates = [Path(selected)] if selected else [repository / 'installer/wix_packages.py',
+                                                       repository.parent / 'redist/windows/wix_packages.py']
+        owner = next((path for path in candidates if path.is_file()), None)
+        if owner is None:
+            raise FileNotFoundError('current shared wix_packages.py required; pair the Redist source or set OA_LEMONADE_WIX_PACKAGES_OWNER')
+        self.put(sources_root, 'redist/windows/wix_packages.py', owner.read_bytes()
+                 + ('\nPACKAGES=' + repr(policy) + '\n').encode())
+        path.write_bytes(shim + b'.store\\wix\\5.0.2\\wix\\5.0.2\\tools\\net6.0\\any\\wix.dll\0')
+
+    def package_tool_version(self, command, **kwargs):
+        path = Path(command[0])
+        data = path.read_bytes()
+        if data.startswith(b'git'):
+            return 'git version 2.56.0.windows.4\n'
+        if data.startswith(b'python'):
+            return 'Python 3.12.10\n'
+        if b'.store\\wix\\5.0.2\\wix\\5.0.2\\tools\\net6.0\\any\\wix.dll\0' in data:
+            return '5.0.2+fixture\n'
+        return 'wrong tool identity\n'
 
     def test_materialization_acquisition_names_and_role_join_have_one_source(self):
         manifest = recipe.read_json(recipe.HERE / 'native-inputs.json')
@@ -840,6 +873,11 @@ int main(int argc,char**argv) {
                     mock.patch.object(recipe, 'cmake_build', side_effect=build), \
                     mock.patch.object(recipe.subprocess, 'check_output', return_value=transform.read_bytes()):
                 result = recipe.prepare(args)
+            stored = recipe.read_json(args.out / 'native-receipt.json')
+            self.assertEqual(stored['source'], 'source/lemonade')
+            self.assertEqual(args.out / recipe.relative(stored['source']), args.out / 'source/lemonade')
+            with self.assertRaisesRegex(ValueError, 'noncanonical relative input'):
+                recipe.relative(stored['source'].replace('/', chr(92)))
             self.assertEqual(targets, [(), (), ('lemond', 'lemonade', 'LemonadeServer', 'web-app')])
             self.assertEqual([row['id'] for row in result['own_pe']], list(recipe.OWN_PE))
             native = next(command for command in commands if '-DLEMONADE_OPENABSTRACTIONS=ON' in command)
@@ -864,6 +902,7 @@ int main(int argc,char**argv) {
         tools = {}
         for name in ('cmake', 'python', 'node', 'npm', 'wix', 'msbuild', 'git'):
             tools[name] = self.put(inputs, 'tools/' + name, name.encode())
+        self.package_wix_fixture(tools['wix'], root / 'sources')
         self.put(native, 'sdk/include/protocol.hpp')
         self.put(native, 'sdk/lib/abstraction_ipc.lib')
         for name in recipe.OWN_PE:
@@ -876,9 +915,9 @@ int main(int argc,char**argv) {
         self.put(build, 'wix_installer_minimal.vcxproj')
         product = self.put(build, 'installer/Product.wxs', b'''<Wix><Package>
 <StandardDirectory Id="LocalAppDataFolder"><Directory Id="INSTALLDIR" Name="lemonade_oa"><Directory Id="BinDir" Name="bin"/></Directory></StandardDirectory>
-<DirectoryRef Id="BinDir"><Component>''' + b''.join(
+<ComponentGroup Id="Executables" Directory="BinDir"><Component>''' + b''.join(
             ('<File Id="' + name + '" Source="$(var.BuildDir)/Release/' + name + '"/>').encode()
-            for name in recipe.OWN_PE) + b'''</Component></DirectoryRef>
+            for name in recipe.OWN_PE) + b'''</Component></ComponentGroup>
 <Icon Id="LemonadeIcon" SourceFile="$(var.BuildDir)/Release/resources/favicon.ico"/>
 </Package></Wix>''')
         for name in ('WebAppFragment.minimal.wxs', 'DocsFragment.minimal.wxs', 'OALicenses.wxs'):
@@ -890,6 +929,10 @@ int main(int argc,char**argv) {
         host_metadata = inputs / 'host-tools.json'
         recipe.write_json(host_metadata, {'schema': 1, 'tools': {
             name: recipe.pin(path) for name, path in tools.items()}})
+        recipe.write_json(inputs / 'selected-toolchain.json', {'tools': {
+            name: dict(recipe.pin(path), path=str(path)) for name, path in tools.items()}})
+        for name in ('build_native.py', 'file_boundary.py'):
+            self.put(root / 'sources/abstractions/adopters/lemonade', name, (recipe.HERE / name).read_bytes())
         received = {'schema': 1, 'sources': {}, 'build_inputs': recipe.inventory(inputs)}
         input_receipt = root / 'received.json'
         recipe.write_json(input_receipt, received)
@@ -918,6 +961,49 @@ int main(int argc,char**argv) {
     def ui_rows(self, sources, package, extension):
         return [dict(id=name, **recipe.pin(package)) for name in recipe.UI_IDS]
 
+    def test_component_group_directory_default_and_component_override_stay_anchored(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args, _ = self.package_fixture(Path(temporary))
+            build, source = args.native_root / 'build', args.native_root / 'source'
+            product = build / 'installer/Product.wxs'
+            original = product.read_text(encoding='utf-8')
+
+            def payload():
+                return recipe.source_payload(product, [], recipe.package_variables(build, source),
+                                             [source, build], [])['files']
+
+            self.assertTrue(all(row['path'].startswith('LocalAppDataFolder/lemonade_oa/bin/')
+                                for row in payload()))
+            product.write_text(original.replace('<Component>', '<Component Directory="INSTALLDIR">'),
+                               encoding='utf-8')
+            self.assertTrue(all(row['path'] == 'LocalAppDataFolder/lemonade_oa/' + row['id']
+                                for row in payload()))
+            product.write_text(original.replace('Directory="BinDir"', 'Directory="ForeignDir"'),
+                               encoding='utf-8')
+            with self.assertRaises(KeyError):
+                payload()
+            product.write_text(original.replace('<StandardDirectory Id="LocalAppDataFolder">',
+                                                '<StandardDirectory Id="ProgramFilesFolder">'),
+                               encoding='utf-8')
+            with self.assertRaisesRegex(ValueError, 'unanchored native File destination'):
+                payload()
+
+    def test_scoped_package_license_source_keeps_unresolved_symbol_refusal(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = self.put(root, 'licenses/@discoveryjs/json-ext/LICENSE', b'selected license')
+            product = self.put(root, 'Product.wxs', b'''<Wix><Package>
+<StandardDirectory Id="LocalAppDataFolder"><Directory Id="INSTALLDIR" Name="lemonade_oa"/></StandardDirectory>
+<ComponentGroup Directory="INSTALLDIR"><Component><File Id="ScopedLicense"
+ Source="$(var.WebAppSourceDir)/licenses/@discoveryjs/json-ext/LICENSE"/></Component></ComponentGroup>
+</Package></Wix>''')
+            rows = recipe.source_payload(product, [], {'WebAppSourceDir': root}, [root], [])['files']
+            self.assertEqual(rows, [dict(recipe.pin(source), id='ScopedLicense',
+                                         path='LocalAppDataFolder/lemonade_oa/LICENSE')])
+            for value in ('$(var.Missing)/LICENSE', '@MISSING@/LICENSE'):
+                with self.subTest(value=value), self.assertRaisesRegex(ValueError, 'unresolved WiX source symbol'):
+                    recipe.expand(value, {'WebAppSourceDir': root})
+
     def test_package_emits_complete_source_rows_and_preserves_signed_bytes(self):
         with tempfile.TemporaryDirectory() as temporary:
             args, received = self.package_fixture(Path(temporary))
@@ -930,6 +1016,7 @@ int main(int argc,char**argv) {
                     mock.patch.object(recipe, 'selected_git_environment', side_effect=lambda *args: args[2] if len(args) > 2 else {'safe': 'environment'}), \
                     mock.patch.object(recipe, 'selected_tool', side_effect=lambda path, *_: str(path)), \
                     mock.patch.object(recipe, 'ui_rows', side_effect=self.ui_rows), \
+                    mock.patch.object(recipe.subprocess, 'check_output', side_effect=self.package_tool_version), \
                     mock.patch.object(recipe, 'generate_package_fragments'), \
                     mock.patch.object(recipe, 'package_wix', side_effect=build):
                 result = recipe.package(args)
@@ -940,8 +1027,37 @@ int main(int argc,char**argv) {
             self.assertIn('build/installer/WebAppFragment.minimal.wxs',result['package_inputs'])
             self.assertTrue(all('build/Release/'+name in result['package_inputs'] for name in recipe.OWN_PE))
 
+    def test_package_relocates_current_tools_and_preserves_original_compiler_provenance(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);args,received=self.package_fixture(root)
+            selected=args.sources_root/'abstractions/adopters/lemonade/build_native.py'
+            selected.write_bytes(b'original selected native producer; retained as data\n')
+            native_path=args.native_root/'native-receipt.json'
+            native=recipe.read_json(native_path)
+            native['producer_sources']=recipe.native_producer_sources(args.sources_root)
+            recipe.write_json(native_path,native)
+            snapshots={path:path.read_bytes() for path in (args.input_receipt,args.host_tools,
+                args.inputs_root/'selected-toolchain.json',native_path,args.signatures)}
+            for name in recipe.PACKAGE_TOOLS:
+                current=root/'current-tools'/name
+                current.parent.mkdir(exist_ok=True);current.write_bytes((name+' current receiver').encode())
+                if name == 'wix':
+                    self.package_wix_fixture(current, args.sources_root, shim=b'different SDK apphost ')
+                setattr(args,name,current)
+            for name in set(recipe.HOST_TOOLS)-set(recipe.PACKAGE_TOOLS):delattr(args,name)
+            def build(_wix,build,source,extension,output,env):output.write_bytes(b'unsigned MSI')
+            with mock.patch.object(recipe,'received_inputs',return_value=received), \
+                 mock.patch.object(recipe,'selected_git_environment',side_effect=lambda *args:args[2] if len(args)>2 else {}), \
+                 mock.patch.object(recipe,'selected_tool',side_effect=lambda path,*_:str(path)), \
+                 mock.patch.object(recipe,'ui_rows',side_effect=self.ui_rows), \
+                 mock.patch.object(recipe.subprocess,'check_output',side_effect=self.package_tool_version), \
+                 mock.patch.object(recipe,'generate_package_fragments'),mock.patch.object(recipe,'package_wix',side_effect=build):
+                recipe.package(args)
+            self.assertEqual({path:path.read_bytes() for path in snapshots},snapshots)
+
     def test_package_refuses_mutation_and_wrong_signed_roster(self):
-        for case in ('mutation', 'roster', 'resource', 'product', 'during-product'):
+        for case in ('mutation', 'roster', 'resource', 'product', 'during-product', 'tool', 'producer', 'during-tool',
+                     'recorded-unused-tool', 'wix-payload', 'during-wix-payload'):
             with self.subTest(case=case), tempfile.TemporaryDirectory() as temporary:
                 args, received = self.package_fixture(Path(temporary))
                 if case == 'roster':
@@ -953,6 +1069,15 @@ int main(int argc,char**argv) {
                 if case == 'product':
                     path = args.native_root / 'build/installer/Product.wxs'
                     path.write_bytes(path.read_bytes().replace(b'lemonade_oa', b'foreign-app'))
+                if case == 'tool':args.python.write_bytes(b'changed selected tool')
+                if case == 'producer':
+                    (args.sources_root/'abstractions/adopters/lemonade/build_native.py').write_bytes(b'changed native source')
+                if case == 'recorded-unused-tool':
+                    record = recipe.read_json(args.native_root/'native-receipt.json')
+                    record['tools']['msbuild']['sha256'] = '0' * 64
+                    recipe.write_json(args.native_root/'native-receipt.json', record)
+                managed = args.wix.parent/'.store/wix/5.0.2/wix/5.0.2/tools/net6.0/any/wix.dll'
+                if case == 'wix-payload':managed.write_bytes(b'changed managed WiX')
 
                 def build(*_):
                     if case == 'mutation':
@@ -960,6 +1085,12 @@ int main(int argc,char**argv) {
                     if case == 'during-product':
                         path = args.native_root / 'build/installer/Product.wxs'
                         path.write_bytes(path.read_bytes().replace(b'lemonade_oa', b'foreign-app'))
+                    if case == 'during-tool':
+                        Path(_[4]).write_bytes(b'unsigned MSI')
+                        args.python.write_bytes(b'changed while packaging')
+                    if case == 'during-wix-payload':
+                        Path(_[4]).write_bytes(b'unsigned MSI')
+                        managed.write_bytes(b'changed managed WiX while packaging')
 
                 def ui(sources, path, extension):
                     if recipe.pin(path) != received['build_inputs']['wix/extension.nupkg']:
@@ -970,13 +1101,33 @@ int main(int argc,char**argv) {
                         mock.patch.object(recipe, 'selected_git_environment', side_effect=lambda *args: args[2] if len(args) > 2 else {'safe': 'environment'}), \
                         mock.patch.object(recipe, 'selected_tool', side_effect=lambda path, *_: str(path)), \
                         mock.patch.object(recipe, 'ui_rows', side_effect=ui), \
+                        mock.patch.object(recipe.subprocess, 'check_output', side_effect=self.package_tool_version), \
                         mock.patch.object(recipe, 'generate_package_fragments'), \
                         mock.patch.object(recipe, 'package_wix', side_effect=build) as invoked:
                     with self.assertRaises(ValueError):
                         recipe.package(args)
-                    if case not in ('mutation', 'during-product'):
+                    if case not in ('mutation', 'during-product', 'during-tool', 'during-wix-payload'):
                         invoked.assert_not_called()
                 self.assertFalse((args.out / 'installer-receipt.json').exists())
+
+    def test_package_tools_refuse_unapproved_versions_and_managed_payload_changes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args, _ = self.package_fixture(Path(temporary))
+            with mock.patch.object(recipe.subprocess, 'check_output', side_effect=self.package_tool_version):
+                _, facts = recipe.package_host_tools(args)
+            self.assertEqual(facts['wix']['managed']['version'], '5.0.2')
+            for tool, version in (('git', 'git version 2.57.0.windows.1'), ('python', 'Python 3.13.0'), ('wix', '5.0.3')):
+                with self.subTest(tool=tool):
+                    def output(command, **kwargs):
+                        return version if Path(command[0]) == getattr(args, tool) else self.package_tool_version(command)
+                    with mock.patch.object(recipe.subprocess, 'check_output', side_effect=output):
+                        with self.assertRaisesRegex(ValueError, 'package host tool identity differs: ' + tool):
+                            recipe.package_host_tools(args)
+            extra = args.wix.parent/'.store/wix/5.0.2/wix/5.0.2/tools/net6.0/any/foreign.dll'
+            extra.write_bytes(b'unlisted managed executable')
+            with mock.patch.object(recipe.subprocess, 'check_output', side_effect=self.package_tool_version):
+                with self.assertRaisesRegex(ValueError, 'installed payload differs'):
+                    recipe.package_host_tools(args)
 
     def test_package_only_wix_is_shared_and_measured_inputs_refuse_changes(self):
         with tempfile.TemporaryDirectory() as temporary:

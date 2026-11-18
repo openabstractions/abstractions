@@ -25,6 +25,7 @@ COMMIT = re.compile(r'[0-9a-f]{40}\Z')
 UI_IDS = ('WixUiCa_X64', 'WixUI_Bmp_Up', 'WixUI_Bmp_Banner', 'WixUI_Ico_Exclam',
           'WixUI_Ico_Info', 'WixUI_Bmp_New', 'WixUI_Bmp_Dialog')
 HOST_TOOLS = ('cmake', 'python', 'node', 'npm', 'wix', 'msbuild', 'git')
+PACKAGE_TOOLS = ('git', 'python', 'wix')
 FIND_FLAGS = {'CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH': 'FALSE',
               'CMAKE_FIND_USE_CMAKE_SYSTEM_PATH': 'FALSE',
               'CMAKE_FIND_USE_PACKAGE_REGISTRY': 'FALSE',
@@ -65,6 +66,11 @@ def producer_sources():
     if BOUNDARY_PATH.read_bytes() != BOUNDARY_BYTES:
         raise ValueError('producer boundary helper changed after load')
     return {name: pin(HERE / name) for name in ('build_native.py', 'file_boundary.py')}
+
+
+def native_producer_sources(sources_root):
+    root = Path(sources_root) / 'abstractions/adopters/lemonade'
+    return {name: pin(regular(root / name, [root])) for name in ('build_native.py', 'file_boundary.py')}
 
 
 def source_roles(sources_root, package, extension):
@@ -351,6 +357,8 @@ def host_tools(args, received):
     if (set(document) != {'schema', 'tools'} or document['schema'] != 1
             or set(document['tools']) != set(HOST_TOOLS)):
         raise ValueError('invalid finite host tool bindings')
+    for expected in document['tools'].values():
+        check_pin(expected)
     paths, facts = {}, {}
     for name in HOST_TOOLS:
         path = Path(getattr(args, name))
@@ -358,11 +366,44 @@ def host_tools(args, received):
             raise ValueError('host tool path must be explicit and absolute')
         path = regular(path, [path.parent])
         expected = document['tools'][name]
-        check_pin(expected)
         if pin(path) != expected:
             raise ValueError('host tool differs from selected bytes: ' + name)
         paths[name] = str(path)
         facts[name] = dict(expected, path=str(path))
+    return paths, facts
+
+
+def package_wix_payload(path, sources_root, owner_path=None):
+    owner_path = regular(Path(owner_path or Path(sources_root) / 'redist/windows/wix_packages.py'),
+                         [Path(owner_path).parent if owner_path else Path(sources_root) / 'redist'])
+    before = pin(owner_path)
+    owner = source_module(owner_path)
+    result = owner.installed_tool_payload(path)
+    if pin(owner_path) != before:
+        raise ValueError('package WiX owner changed during validation')
+    return dict(result, owner=before)
+
+
+def package_host_tools(args):
+    """Measure the receiving job's finite execution tools, separately from preparation."""
+    paths, facts = {}, {}
+    for name in PACKAGE_TOOLS:
+        path = Path(getattr(args, name))
+        if not path.is_absolute():
+            raise ValueError('package host tool path must be explicit and absolute')
+        path = regular(path, [path.parent])
+        before = pin(path)
+        payload = package_wix_payload(path, args.sources_root, getattr(args, 'wix_packages_owner', None)) if name == 'wix' else None
+        version = subprocess.check_output([str(path), '--version'], text=True, timeout=30).strip()
+        valid = (re.fullmatch(r'git version 2\.56\.[0-9]+\.windows\.[0-9]+', version) if name == 'git' else
+                 re.fullmatch(r'Python 3\.12\.[0-9]+', version) if name == 'python' else
+                 re.fullmatch(re.escape(payload['version']) + r'(?:\+[A-Za-z0-9.-]+)?', version))
+        if not valid or pin(path) != before:
+            raise ValueError('package host tool identity differs: ' + name)
+        paths[name] = str(path)
+        facts[name] = dict(before, path=str(path), version=version)
+        if payload is not None:
+            facts[name]['managed'] = payload
     return paths, facts
 
 
@@ -709,23 +750,41 @@ def package_wix(wix, build, source, extension, output, env, *, runner=None):
 
 
 def package(args):
+    package_sources = producer_sources()
     packet_paths = [args.input_receipt, args.signatures, args.wix_ui_package, args.wix_ui_extension,
                     args.native_root / 'native-receipt.json']
     packet_pins = [pin(path) for path in packet_paths]
-    tools, tool_facts = host_tools(args, read_json(args.input_receipt))
+    # Original preparation tools stay authenticated data. Only the current
+    # package tools are opened or executed on this runner.
+    selected_tool(args.host_tools, read_json(args.input_receipt), args.inputs_root)
+    original = read_json(args.host_tools)
+    if (set(original) != {'schema', 'tools'} or original['schema'] != 1
+            or set(original['tools']) != set(HOST_TOOLS)):
+        raise ValueError('invalid finite host tool bindings')
+    for row in original['tools'].values():
+        check_pin(row)
+    tools, tool_facts = package_host_tools(args)
     git = tools['git']
     hooks = args.inputs_root / 'upstream/empty-git-hooks'
     git_env = selected_git_environment(args.sources_root, hooks)
     received = received_inputs(args.input_receipt, args.inputs_root, args.sources_root, git_tool=git, env=git_env)
     native = read_json(args.native_root / 'native-receipt.json')
-    if native.get('producer_sources') != producer_sources():
+    if native.get('producer_sources') != native_producer_sources(args.sources_root):
         raise ValueError('prepared producer sources differ')
     if native['version'] != args.version or native['received_input_receipt'] != pin(args.input_receipt):
         raise ValueError('native preparation/input receipt differs')
     if native['selected_inputs'] != received or inventory(args.native_root / 'sdk') != native['sdk']:
         raise ValueError('selected SDK inputs differ')
-    if tool_facts != native['tools']:
+    original_tools = read_json(args.inputs_root / 'selected-toolchain.json')['tools']
+    original_pins = original['tools']
+    if (set(original_pins) != set(HOST_TOOLS) or native['tools'] != original_tools or set(original_tools) != set(HOST_TOOLS)
+            or any(set(row) != {'path', 'sha256', 'bytes'}
+                   or not isinstance(row['path'], str) or not Path(row['path']).is_absolute()
+                   or {key: row[key] for key in ('sha256', 'bytes')} != original_pins[name]
+                   for name, row in original_tools.items())):
         raise ValueError('prepared tool selection differs')
+    for row in original_pins.values():
+        check_pin(row)
     signatures = read_json(args.signatures)
     proofs = {row['name']: row for row in signatures['files']}
     if signatures.get('schema') != 1 or signatures.get('result') != 'pass' or len(proofs) != len(signatures['files']):
@@ -783,8 +842,9 @@ def package(args):
     target = args.out / msi.name
     target.write_bytes(regular(msi, [source]).read_bytes())
     received_inputs(args.input_receipt, args.inputs_root, args.sources_root, git_tool=git, env=git_env)
-    if (native['producer_sources'] != producer_sources()
-            or [pin(path) for path in packet_paths] != packet_pins or host_tools(args, received)[1] != tool_facts):
+    if (native['producer_sources'] != native_producer_sources(args.sources_root) or producer_sources() != package_sources
+            or [pin(path) for path in packet_paths] != packet_pins
+            or package_host_tools(args)[1] != tool_facts):
         raise ValueError('producer receipt changed during packaging')
     app = {'id': 'lemonade', 'title': 'Lemonade (OA build)', 'file': target.name, **pin(target)}
     write_json(args.out / 'bundle-app.json', app)
@@ -793,6 +853,7 @@ def package(args):
                'received_input_receipt': pin(args.input_receipt),
                'native_receipt': pin(args.native_root / 'native-receipt.json'),
                'signatures_receipt': pin(args.signatures),
+               'package_tools': tool_facts,
                'package_inputs': inputs,
                'expected_payload': {'schema': 1, 'msi': dict(pin(target), name=target.name), **payload},
                'bundle_app_sha256': pin(args.out / 'bundle-app.json')['sha256']}
@@ -809,17 +870,18 @@ def main(argv=None):
         material.add_argument('--' + option, type=Path, required=True)
     for phase in ('prepare-native', 'package'):
         command = sub.add_parser(phase)
-        for option in ('input-receipt', 'inputs-root', 'sources-root', 'out', 'cmake', 'python',
-                       'node', 'npm', 'wix', 'msbuild', 'git', 'host-tools', 'npm-cache', 'wix-ui-package', 'wix-ui-extension'):
+        for option in ('input-receipt', 'inputs-root', 'sources-root', 'out', 'host-tools', 'wix-ui-package', 'wix-ui-extension',
+                       *(HOST_TOOLS if phase == 'prepare-native' else PACKAGE_TOOLS)):
             command.add_argument('--' + option, type=Path, required=True)
         command.add_argument('--version', required=True)
         if phase == 'prepare-native':
-            for option in ('source-root', 'deps-root', 'toolchain'):
+            for option in ('source-root', 'deps-root', 'toolchain', 'npm-cache'):
                 command.add_argument('--' + option, type=Path, required=True)
             command.add_argument('--generator', default='Visual Studio 18 2026')
         else:
             for option in ('native-root', 'signatures'):
                 command.add_argument('--' + option, type=Path, required=True)
+            command.add_argument('--wix-packages-owner', type=Path)
     args = parser.parse_args(argv)
     if not args.phase:
         parser.print_help()
