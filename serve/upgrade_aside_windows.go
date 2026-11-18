@@ -470,6 +470,18 @@ func isUpgradeAsideLibrary(name string) bool {
 // Resolve, settle and release one admitted installer occurrence under the same
 // scope lock. A delayed action cannot reopen or release a successor's record.
 func settleUpgradeAsideOperation(env exclusionEnv, scope string, rollback bool, caller processIdentity, release bool) (notes, releaseNotes []string, err error) {
+	// A completed removal may already have removed the scope directory. An
+	// absent record has no custody to settle; do not recreate its admission lock.
+	record, _, err := env.load(scope)
+	if err != nil {
+		return nil, nil, fmt.Errorf("previous images of the %s upgrade: %w", scope, err)
+	}
+	if record == nil {
+		if release {
+			releaseNotes = []string{fmt.Sprintf("no %s upgrade exclusion was held", scope)}
+		}
+		return nil, releaseNotes, nil
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	path, unlock, err := env.lockScope(ctx, scope)
@@ -478,7 +490,7 @@ func settleUpgradeAsideOperation(env exclusionEnv, scope string, rollback bool, 
 	}
 	defer unlock()
 	ledger := upgradeLibraryLedger{env: env, scope: scope, path: path}
-	record, _, err := env.load(scope)
+	record, _, err = env.load(scope)
 	if err != nil {
 		return nil, nil, fmt.Errorf("previous images of the %s upgrade: %w", scope, err)
 	}

@@ -485,6 +485,31 @@ func TestUpgradeAsideSettlesEarlierLeftoversBeforeMoving(t *testing.T) {
 	}
 }
 
+func TestUpgradeAsideReleaseWithoutRecordDoesNotCreateScope(t *testing.T) {
+	x := newTestExclusion(t)
+	x.env.lock = lockUpgradeScope
+	notes, released, err := settleUpgradeAsideOperation(x.env, "user", false, processIdentity{}, true)
+	if err != nil || len(notes) != 0 || len(released) != 1 {
+		t.Fatalf("release absent record: notes=%q released=%q err=%v", notes, released, err)
+	}
+	if _, err := os.Stat(filepath.Join(x.dir, "user")); !os.IsNotExist(err) {
+		t.Fatalf("release created absent scope: %v", err)
+	}
+}
+
+func TestUpgradeAsideReleaseReadErrorDoesNotCreateScope(t *testing.T) {
+	x := newTestExclusion(t)
+	x.env.lock = lockUpgradeScope
+	x.env.read = func(string) ([]byte, error) { return nil, os.ErrPermission }
+	_, _, err := settleUpgradeAsideOperation(x.env, "user", false, processIdentity{}, true)
+	if err == nil || !strings.Contains(err.Error(), "permission") {
+		t.Fatalf("unreadable record accepted: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(x.dir, "user")); !os.IsNotExist(err) {
+		t.Fatalf("release created scope for unreadable record: %v", err)
+	}
+}
+
 func TestUpgradeAsideWithoutRecordMovesNothing(t *testing.T) {
 	x := newTestExclusion(t)
 	folder := t.TempDir()

@@ -32,7 +32,7 @@ func currentSupervisor() (string, error) { return bootstrap.SupervisorName() }
 
 func activateInstalled(ctx context.Context) error {
 	name, err := currentSupervisor()
-	if err != nil {
+	if err != nil && err != os.ErrNotExist {
 		return err
 	}
 	system, err := windows.GetSystemDirectory()
@@ -43,6 +43,7 @@ func activateInstalled(ctx context.Context) error {
 		instance: name, sc: filepath.Join(system, "sc.exe"),
 		run: startCommand, launch: launchDetached, executable: os.Executable, stat: os.Stat, refusal: refuseDuringUpgrade,
 		profile: bootstrap.CurrentProfileView, shellLaunch: launchThroughShell,
+		report: func(reason string) { fmt.Fprintln(os.Stderr, "start: "+reason+"; activating the owned per-user host") },
 	})
 }
 
@@ -109,6 +110,7 @@ type windowsActivation struct {
 	// shellLaunch starts the host through this session's desktop shell for a
 	// caller whose profile view is virtualized.
 	shellLaunch func(image, dir string, args ...string) error
+	report      func(string)
 }
 
 // activateWindows starts this session's host. A machine installation's
@@ -124,18 +126,25 @@ func activateWindows(ctx context.Context, a windowsActivation) error {
 	if err := a.refusal(); err != nil {
 		return err
 	}
-	err = a.run(ctx, a.sc, "query", a.instance)
-	if err == nil {
-		err = a.run(ctx, a.sc, "start", a.instance)
-		var exit *exec.ExitError
-		if errors.As(err, &exit) && exit.ExitCode() == 1056 {
-			return nil
+	reason := "User Manager context is absent"
+	if a.instance != "" {
+		reason = "this session's per-user service is absent"
+		err = a.run(ctx, a.sc, "query", a.instance)
+		if err == nil {
+			err = a.run(ctx, a.sc, "start", a.instance)
+			var exit *exec.ExitError
+			if errors.As(err, &exit) && exit.ExitCode() == 1056 {
+				return nil
+			}
+			return err
 		}
-		return err
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() != 1060 {
+			return err
+		}
 	}
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || exit.ExitCode() != 1060 {
-		return err
+	if a.report != nil {
+		a.report(reason)
 	}
 	if a.profile != nil {
 		view, err := a.profile()

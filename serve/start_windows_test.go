@@ -125,7 +125,7 @@ func TestWindowsActivationUsesOnlyOwnedInstalledPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	sc := `C:\Windows\System32\sc.exe`
-	for _, mode := range []string{"service", "running", "user", "denied", "missing", "upgrading", "virtualized", "noshell"} {
+	for _, mode := range []string{"service", "running", "user", "context-missing", "denied", "missing", "upgrading", "virtualized", "noshell"} {
 		t.Run(mode, func(t *testing.T) {
 			var commands [][]string
 			run := func(ctx context.Context, path string, args ...string) error {
@@ -154,8 +154,14 @@ func TestWindowsActivationUsesOnlyOwnedInstalledPaths(t *testing.T) {
 			if mode == "upgrading" {
 				refusal = func() error { return upgradeRefusal(errUpgradeInProgress) }
 			}
+			instance := "OpenAbstractionsSupervisor_123"
+			if mode == "context-missing" {
+				instance = ""
+			}
+			var reasons []string
 			err := activateWindows(context.Background(), windowsActivation{
-				instance: "OpenAbstractionsSupervisor_123", sc: sc, run: run,
+				instance: instance, sc: sc, run: run,
+				report: func(reason string) { reasons = append(reasons, reason) },
 				launch: func(image string, args ...string) error {
 					launched = append(launched, append([]string{image}, args...))
 					return nil
@@ -174,6 +180,12 @@ func TestWindowsActivationUsesOnlyOwnedInstalledPaths(t *testing.T) {
 				},
 			})
 			switch mode {
+			case "context-missing":
+				if err != nil || len(commands) != 0 || !reflect.DeepEqual(launched, [][]string{{twin, "serve", "supervisor"}}) ||
+					!reflect.DeepEqual(reasons, []string{"User Manager context is absent"}) {
+					t.Fatal(err, commands, launched, reasons)
+				}
+				return
 			case "missing":
 				if err == nil || !strings.Contains(err.Error(), "openabstractionsw.exe") || len(commands)+len(launched) != 0 {
 					t.Fatal(err, commands, launched)
@@ -204,7 +216,8 @@ func TestWindowsActivationUsesOnlyOwnedInstalledPaths(t *testing.T) {
 				}
 				return
 			case "user":
-				if err != nil || len(commands) != 1 || !reflect.DeepEqual(launched, [][]string{{twin, "serve", "supervisor"}}) {
+				if err != nil || len(commands) != 1 || !reflect.DeepEqual(launched, [][]string{{twin, "serve", "supervisor"}}) ||
+					!reflect.DeepEqual(reasons, []string{"this session's per-user service is absent"}) {
 					t.Fatal(err, commands, launched)
 				}
 				return
