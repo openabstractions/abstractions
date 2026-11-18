@@ -213,6 +213,56 @@ class PackageSourceTests(unittest.TestCase):
         (self.root / "node" / "untracked.py").write_text("unsafe = True\n", encoding="utf-8")
         self.assertEqual(untracked_source_files(self.root, ["node"]), ["node/untracked.py"])
 
+    def test_redist_comfy_inputs_remain_clean_after_windows_checkout(self):
+        import package_comfyui_integration as owner
+        from git_env import source_git_environment
+        repository = Path(__file__).resolve().parents[1]
+        files = {
+            '.gitattributes': (repository / 'research/org-edits/redist/.gitattributes').read_bytes(),
+            'pypi.tsv': (repository / 'research/org-edits/redist/pypi.tsv').read_bytes(),
+            'windows/apps/build_app.py': (repository / 'installer/apps/build_app.py').read_bytes(),
+            'windows/apps/bundle-actions/actions.cpp': (repository / 'installer/apps/bundle-actions/actions.cpp').read_bytes(),
+        }
+        for name, raw in files.items():
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(raw)
+        self.git('add', *files)
+        self.git('commit', '-qm', 'selected Redist Comfy inputs')
+        revision = self.git_output('rev-parse', 'HEAD')
+        self.git('config', '--unset', 'core.autocrlf')
+        # Actions checkout inherits Windows' global autocrlf. The source reader
+        # independently suppresses global config, so checkout attributes must
+        # keep its authenticated readset equal to the committed source bytes.
+        global_config = self.root / 'fixture-global.gitconfig'
+        global_config.write_bytes(b'[core]\n\tautocrlf = true\n')
+        checkout_environment = source_git_environment()
+        checkout_environment['GIT_CONFIG_GLOBAL'] = str(global_config)
+        received = [name for name in files if name != '.gitattributes']
+        for name in received:
+            (self.root / name).unlink()
+        subprocess.run(['git', '-C', str(self.root), 'checkout-index', '--index', '--force', '--', *received],
+                       check=True, capture_output=True, env=checkout_environment, timeout=30)
+        ordinary_status = subprocess.run(['git', '-C', str(self.root), 'status', '--porcelain=v1',
+                                         '--untracked-files=all', '--', *received], check=True,
+                                        capture_output=True, env=checkout_environment, timeout=30)
+        self.assertEqual(ordinary_status.stdout, b'')
+        # Recheck content rather than relying on checkout's cached stat data.
+        for name in received:
+            path = self.root / name
+            information = path.stat()
+            os.utime(path, ns=(information.st_atime_ns, information.st_mtime_ns + 2_000_000_000))
+        for directory in ('pypi.tsv', 'windows/apps'):
+            owner.verify_public_checkout(self.root, revision, directory)
+        for name, raw in files.items():
+            self.assertEqual((self.root / name).read_bytes(), raw)
+        (self.root / 'pypi.tsv').write_bytes(files['pypi.tsv'] + b'changed source\n')
+        with self.assertRaisesRegex(ValueError, 'dirty'):
+            owner.verify_public_checkout(self.root, revision, 'pypi.tsv')
+        (self.root / 'windows/apps/untracked.py').write_bytes(b'not in the selected commit\n')
+        with self.assertRaisesRegex(ValueError, 'dirty'):
+            owner.verify_public_checkout(self.root, revision, 'windows/apps')
+
     def test_foreign_git_environment_cannot_spoof_private_or_public_source(self):
         import package_comfyui_integration as owner
         revision=self.git_output('rev-parse','HEAD')

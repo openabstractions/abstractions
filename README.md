@@ -19,14 +19,12 @@ the available packages, included features and platform verification.
 
 ## Available runtime
 
-[Download the latest Open Abstractions runtime](https://github.com/openabstractions/redist/releases/latest).
+[Download the latest OpenAbstractions runtime](https://github.com/openabstractions/redist/releases/latest).
 The runtime provides provider admission and credential protections, resource
 and rights contracts, expanded inference APIs, `inventoryd`, `modelhostd`, an
-optional MCP gateway and the Windows Panel. Windows and Linux packages are
-unsigned; ARM64 packages are cross-built and are not installation-tested.
-Current macOS source uses XPC for
+optional MCP gateway and the Windows Panel. Current macOS source uses XPC for
 program identity. The release notes give the attached assets, checksums, signing
-state and package-specific installation evidence.
+state and package-specific installation evidence, including tested architectures.
 
 The runtime supports accepted work, calls AI providers with named credentials,
 manages application permissions, and finds or activates registered applications.

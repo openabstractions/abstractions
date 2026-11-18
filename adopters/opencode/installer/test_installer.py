@@ -936,7 +936,23 @@ class PayloadBoundary(unittest.TestCase):
             self.assertEqual(receipt['stock'],['a8199cf7b6c5102267a5889f80321a4cc92e631d7504c474d32a35b4d440f315'])
             (root/'LICENSE').unlink()
             with patch.dict(build.DESKTOP_FIX,files=files),self.assertRaises(OSError):build.desktop_fix_payload(root)
-        self.assertEqual(build.desktop_fix_directory().parts[-3:],('.forks','opencode-patched','artifact'))
+        self.assertEqual(build.desktop_fix_directory(),Path(build.__file__).resolve().parent/'desktop-fix')
+
+    def test_committed_desktop_fix_matches_reviewed_bytes_and_source(self):
+        payload,receipt=build.desktop_fix_payload()
+        self.assertEqual(receipt['source']['build_commit'],'052dc8d70871bc73d8ea1a30675f23347d144d98')
+        for name,pin in build.DESKTOP_FIX['files'].items():
+            body=payload['desktop-fix/'+name]
+            self.assertEqual({'sha256':hashlib.sha256(body).hexdigest(),'bytes':len(body)},pin)
+        source=build.desktop_fix_directory()/'source.tar'
+        self.assertEqual(source.stat().st_size,6389760)
+        self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(),'3256836353b9e26fcd225537a377885d6356552f170d4f58be955f9b17d364a8')
+        with tarfile.open(source) as archive:
+            self.assertEqual(archive.pax_headers['comment'],receipt['source']['build_commit'])
+            backend=archive.extractfile('watcher-052dc8d/src/windows/WindowsBackend.cc').read()
+            self.assertEqual(hashlib.sha1(b'blob '+str(len(backend)).encode()+b'\0'+backend).hexdigest(),
+                'e5741049edb336552c58acf0b4ad1e6ea8fe9248')
+            self.assertEqual(archive.extractfile('watcher-052dc8d/LICENSE').read(),payload['desktop-fix/LICENSE'])
 
     def test_supplier_pe_naming_an_absolute_builder_path_is_refused(self):
         for path in ('watcher.pdb','build\\Release\\watcher.pdb'):
@@ -1090,6 +1106,30 @@ class PayloadBoundary(unittest.TestCase):
             run.assert_not_called()
             self.assertFalse((root/'bundle.tgz').exists())
 
+    def test_installer_bundling_reads_its_public_sibling_roster(self):
+        build.app_builder()
+        manifest={'name':'@openabstractions/opencode','version':'0.8.0','files':['runtime-connector.js'],
+                  'exports':{'.':'./index.js','./server':'./server.js','./tui':'./tui.js'}}
+        raw=archive([('package/'+name,data,tarfile.REGTYPE) for name,data in {
+            'package.json':json.dumps(manifest).encode(),'runtime-connector.js':b'','index.js':b'',
+            'server.js':b'','tui.js':b'','npm-shrinkwrap.json':b'{}'}.items()])
+        with tempfile.TemporaryDirectory() as temporary,patch.object(build.subprocess,'run') as run:
+            root=Path(temporary);scripts=root/'scripts';scripts.mkdir()
+            for name in ('npm_packages.py','windows_native.py','file_boundary.py'):
+                shutil.copyfile(build.ROOT/'scripts'/name,scripts/name)
+            shared=root/'windows/apps'
+            shutil.copytree(Path(build.app_builder().__file__).parent,shared)
+            selected=root/'adopters/opencode/installer/build_installer.py';selected.parent.mkdir(parents=True)
+            shutil.copyfile(Path(build.__file__).with_name('npm.tsv'),selected.with_name('npm.tsv'))
+            packages=root/'packages';packages.mkdir();plugin=packages/'plugin.tgz';plugin.write_bytes(raw)
+            self.assertFalse((root/'research').exists())
+            with patch.object(build,'ROOT',root),patch.object(build,'__file__',str(selected)),patch.object(build,'build_app',None):
+                build.app_builder(shared/'build_app.py')
+                with self.assertRaisesRegex(ValueError,'incomplete'):
+                    build.bundle_plugin(plugin,hashlib.sha256(raw).hexdigest(),len(raw),packages,root/'cache',root/'bundle.tgz')
+            run.assert_not_called()
+            self.assertFalse((root/'bundle.tgz').exists())
+
     def test_declared_appmodel_native_family_must_be_carried(self):
         manifest={'name':'@openabstractions/opencode','version':'0.8.0','files':['runtime-connector.js'],
                   'exports':{'.':'./index.js','./server':'./server.js','./tui':'./tui.js'},'bundleDependencies':[]}
@@ -1114,6 +1154,63 @@ class PayloadBoundary(unittest.TestCase):
             original.write_bytes(b'mutated!')
             with self.assertRaisesRegex(ValueError,'differs'):
                 build.check_prepared(root)
+
+    def test_receiving_bundle_checks_retained_content_without_producer_paths(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);prepared=root/'prepared';self.prepared_fixture(prepared)
+            values=(b'composed archive',b'original archive',b'dependency archive')
+            pins=[{'sha256':hashlib.sha256(value).hexdigest(),'bytes':len(value)} for value in values]
+            receipt=json.loads((prepared/'payload-receipt.json').read_bytes())
+            receipt['plugin'].update(pins[0])
+            receipt['bundled_plugin']=dict(pins[0],path=str(root/'absent-producer/bundled.tgz'),
+                original_plugin=dict(pins[1],path=str(root/'absent-producer/original.tgz')),
+                packages={'D:/old/sdk/original.tgz':pins[1],'D:/old/sdk/dependency.tgz':pins[2]})
+            source=json.dumps(receipt).encode();(prepared/'payload-receipt.json').write_bytes(source)
+            retained=root/'retained';retained.mkdir()
+            for pin,value in zip(pins,values):(retained/(pin['sha256']+'.tgz')).write_bytes(value)
+            self.assertEqual(len(build.retained_plugin_inputs(receipt)),3)
+            with self.assertRaises(FileNotFoundError):build.check_prepared(prepared)
+            self.assertEqual(build.check_prepared(prepared,retained_inputs=retained),receipt)
+            self.assertEqual((prepared/'payload-receipt.json').read_bytes(),source)
+            self.assertFalse((root/'absent-producer').exists())
+            target=retained/(pins[1]['sha256']+'.tgz');original=target.read_bytes()
+            target.unlink()
+            with self.assertRaisesRegex(ValueError,'roster'):build.check_prepared(prepared,retained_inputs=retained)
+            target.write_bytes(original[:-1]+b'!')
+            with self.assertRaisesRegex(ValueError,'differs'):build.check_prepared(prepared,retained_inputs=retained)
+            target.write_bytes(original)
+            extra=retained/('0'*64+'.tgz');extra.write_bytes(b'extra')
+            with self.assertRaisesRegex(ValueError,'roster'):build.check_prepared(prepared,retained_inputs=retained)
+            extra.unlink()
+            alias=root/'input-hardlink.tgz';os.link(target,alias)
+            try:
+                with self.assertRaisesRegex(ValueError,'hardlinked'):build.check_prepared(prepared,retained_inputs=retained)
+            finally:alias.unlink()
+            alias=root/'retained-alias'
+            if os.name=='nt':
+                subprocess.run(['cmd.exe','/d','/c','mklink','/J',str(alias),str(retained)],
+                               check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+            else:alias.symlink_to(retained,target_is_directory=True)
+            try:
+                with self.assertRaisesRegex(ValueError,'linked|reparse'):build.check_prepared(prepared,retained_inputs=alias)
+            finally:
+                if os.name=='nt':alias.rmdir()
+                else:alias.unlink()
+
+    def test_retained_plugin_digest_names_refuse_escape_and_conflicting_aliases(self):
+        original={'sha256':'a'*64,'bytes':7}
+        self.assertEqual(build.retained_plugin_inputs({'plugin':original}),{})
+        with self.assertRaisesRegex(ValueError,'bundled plugin differs'):
+            build.retained_plugin_inputs({'plugin':original,'bundled_plugin':None})
+        receipt={'plugin':original,'bundled_plugin':dict(original,path='producer/bundle.tgz',
+            original_plugin=dict(original,path='producer/original.tgz'),packages={'producer/a.tgz':original})}
+        self.assertEqual(build.retained_plugin_inputs(receipt),{'a'*64:original})
+        for bad in ('../outside','A'*64,'b'*63):
+            changed=json.loads(json.dumps(receipt));changed['plugin']['sha256']=bad;changed['bundled_plugin']['sha256']=bad
+            with self.subTest(digest=bad),self.assertRaisesRegex(ValueError,'invalid retained'):
+                build.retained_plugin_inputs(changed)
+        receipt['bundled_plugin']['original_plugin']['bytes']=8
+        with self.assertRaisesRegex(ValueError,'conflicting'):build.retained_plugin_inputs(receipt)
 
 
 

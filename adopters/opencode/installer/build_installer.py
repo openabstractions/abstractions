@@ -373,7 +373,7 @@ def pinned(path, sha256, size):
     return data
 
 
-def source_roles(prepared_out=None, cli_archive=None, expected_payload=None):
+def source_roles(prepared_out=None, cli_archive=None, expected_payload=None, *, retained_inputs=None):
     """Expose source-selected PE roles; the receiver admits signatures separately.
 
     The prepackage call selects only new native outputs. SDK members require
@@ -389,7 +389,7 @@ def source_roles(prepared_out=None, cli_archive=None, expected_payload=None):
     if expected_payload is None:
         return tuple(own), (), ('desktop_preflight.exe',)
     app_builder()
-    receipt = check_prepared(Path(prepared_out))
+    receipt = check_prepared(Path(prepared_out), **({'retained_inputs':retained_inputs} if retained_inputs is not None else {}))
     raw = pinned(cli_archive, UPSTREAM['cli']['sha256'], UPSTREAM['cli']['bytes'])
     with zipfile.ZipFile(io.BytesIO(raw)) as archive:
         if archive.namelist() != ['opencode.exe']:
@@ -862,15 +862,49 @@ def package_source(out):
     return target
 
 
-def check_prepared(out):
+def retained_plugin_inputs(receipt):
+    """Original composition facts keyed by content for a receiving directory."""
+    if 'bundled_plugin' not in receipt:return {}
+    composition=receipt['bundled_plugin']
+    if (not isinstance(composition,dict) or not isinstance(composition.get('packages'),dict) or
+            any(composition.get(key)!=receipt['plugin'][key] for key in ('sha256','bytes'))):
+        raise ValueError('bundled plugin differs from the prepared plugin')
+    result={}
+    for value in (composition,composition['original_plugin'],*composition['packages'].values()):
+        if not isinstance(value,dict):raise ValueError('invalid retained plugin input pin')
+        digest,size=value.get('sha256'),value.get('bytes')
+        if not isinstance(digest,str) or not re.fullmatch('[0-9a-f]{64}',digest) or type(size) is not int or size<=0:
+            raise ValueError('invalid retained plugin input pin')
+        pin={'sha256':digest,'bytes':size}
+        if digest in result and result[digest]!=pin:raise ValueError('conflicting retained plugin input size')
+        result[digest]=pin
+    return result
+
+
+def check_prepared(out, *, retained_inputs=None):
     receipt = json.loads((out/'payload-receipt.json').read_text(encoding='utf-8'))
     if 'bundled_plugin' in receipt:
         composition=receipt['bundled_plugin']
-        pinned(composition['path'],composition['sha256'],composition['bytes'])
-        original=composition['original_plugin']
-        pinned(original['path'],original['sha256'],original['bytes'])
-        for path,value in composition['packages'].items():
-            pinned(path,value['sha256'],value['bytes'])
+        if retained_inputs is None:
+            pinned(composition['path'],composition['sha256'],composition['bytes'])
+            original=composition['original_plugin']
+            pinned(original['path'],original['sha256'],original['bytes'])
+            for path,value in composition['packages'].items():
+                pinned(path,value['sha256'],value['bytes'])
+        else:
+            selected=file_boundary_source();source=selected.read_bytes()
+            spec=importlib.util.spec_from_file_location('oa_opencode_retained_input_boundary',selected)
+            boundary=importlib.util.module_from_spec(spec);exec(compile(source,str(selected),'exec'),boundary.__dict__)
+            directory=boundary.ordinary_path(retained_inputs,kind='directory')
+            required=retained_plugin_inputs(receipt)
+            if {path.name for path in directory.iterdir()}!={digest+'.tgz' for digest in required}:
+                raise ValueError('retained plugin input roster differs')
+            for digest,value in required.items():
+                path=boundary.ordinary_path(directory/(digest+'.tgz'),kind='file')
+                if path.stat().st_nlink!=1:raise ValueError('retained plugin input is hardlinked')
+                pinned(path,value['sha256'],value['bytes'])
+            if file_boundary_source()!=selected or selected.read_bytes()!=source:
+                raise ValueError('selected scripts/file_boundary.py changed during receiving')
     raw = (out/'integration-payload.zip').read_bytes()
     if hashlib.sha256(raw).hexdigest() != receipt['zip_sha256']:
         raise ValueError('prepared payload archive differs')
