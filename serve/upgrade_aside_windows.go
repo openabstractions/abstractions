@@ -177,12 +177,16 @@ func stageUpgradeLibrary(source, tools *os.File, root, dir, name string, record 
 }
 
 func openUpgradeLibrary(path string, access uint32) (*os.File, error) {
+	return openUpgradeFile(path, access, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE)
+}
+
+func openUpgradeFile(path string, access, sharing uint32) (*os.File, error) {
 	wide, err := windows.UTF16PtrFromString(path)
 	if err != nil {
 		return nil, err
 	}
 	held, err := windows.CreateFile(wide, access,
-		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+		sharing, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -310,6 +314,10 @@ func settleUpgradeLibrary(asideDir *os.File, installed, name string, ledger *upg
 		return err
 	}
 	defer func() { failure = errors.Join(failure, replacement.Close()) }()
+	return deleteUpgradeFile(source)
+}
+
+func deleteUpgradeFile(source *os.File) error {
 	var status windows.IO_STATUS_BLOCK
 	dispose := byte(1)
 	return windows.NtSetInformationFile(windows.Handle(source.Fd()), &status, &dispose, 1, windows.FileDispositionInformation)
@@ -488,7 +496,12 @@ func settleUpgradeAsideOperation(env exclusionEnv, scope string, rollback bool, 
 	if err != nil {
 		return nil, nil, fmt.Errorf("upgrade library custody lock: %w", err)
 	}
-	defer unlock()
+	defer func() {
+		unlock()
+		if err == nil && release && scope == "machine" && env.retire != nil {
+			err = env.retire(ctx, path, scope)
+		}
+	}()
 	ledger := upgradeLibraryLedger{env: env, scope: scope, path: path}
 	record, _, err = env.load(scope)
 	if err != nil {

@@ -185,6 +185,7 @@ type exclusionEnv struct {
 	trusted      func(path, scope string) error
 	alive        func(holder processIdentity, begun time.Time) bool
 	ended        func(holder processIdentity) bool
+	retire       func(context.Context, string, string) error
 	now          func() time.Time
 }
 
@@ -199,6 +200,7 @@ func systemExclusionEnv() exclusionEnv {
 		trusted:      trustedExclusionFile,
 		alive:        func(holder processIdentity, begun time.Time) bool { return processAlive(holder, begun, time.Now()) },
 		ended:        upgradeInstallerEnded,
+		retire:       retireUpgradeAdmission,
 		now:          time.Now,
 	}
 }
