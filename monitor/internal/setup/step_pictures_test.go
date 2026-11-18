@@ -143,7 +143,7 @@ func TestStepPicturesJoinTheOneQuestion(t *testing.T) {
 	if len(starts) != 2 || starts[1] != "Setting up ComfyUI: Downloading FLUX.2 Klein 4B, about 15 GB. Activity shows its progress. @op-picture" {
 		t.Fatalf("start notices = %v", starts)
 	}
-	if n := w.last(); n.Title != "Ready. Open OpenCode or ComfyUI." || n.Body != "Qwen3.6 35B answers OpenCode and ComfyUI makes pictures on this computer." {
+	if n := w.last(); n.Title != "OpenCode and ComfyUI are ready" || n.Body != "OpenCode uses Qwen3.6 35B and ComfyUI makes pictures on this computer." {
 		t.Fatalf("last notice = %+v", n)
 	}
 	state, _ := w.step().Load(context.Background())
@@ -160,7 +160,7 @@ func TestStepPicturesJoinTheOneQuestion(t *testing.T) {
 	if f.engineCalls != engine || f.configures != configures || len(f.grants) != 1 || f.transfer.reserves != 1 {
 		t.Fatalf("rerun caused effects: engine %d configures %d grants %d reserves %d", f.engineCalls, f.configures, len(f.grants), f.transfer.reserves)
 	}
-	if n := w.last(); n.Title != "Already set up" || n.Body != "Qwen3.6 35B answers OpenCode and ComfyUI makes pictures on this computer." {
+	if n := w.last(); n.Title != "Already set up" || n.Body != "OpenCode uses Qwen3.6 35B and ComfyUI makes pictures on this computer." {
 		t.Fatalf("rerun notice = %+v", n)
 	}
 }
@@ -199,7 +199,7 @@ func TestStepPicturesAlone(t *testing.T) {
 	if w.transfer.reserves != 0 || w.selects != 0 || w.hosted != 0 {
 		t.Fatalf("chat effects for pictures alone: reserves %d selects %d hosted %d", w.transfer.reserves, w.selects, w.hosted)
 	}
-	if n := w.last(); n.Title != "Ready. Open ComfyUI." || n.Body != "ComfyUI makes pictures on this computer." {
+	if n := w.last(); n.Title != "ComfyUI is ready" || n.Body != "ComfyUI makes pictures on this computer." {
 		t.Fatalf("last notice = %+v", n)
 	}
 	if outcome, err := f.with(w, w.step()).Run(context.Background()); err != nil || outcome != stepAlreadySetUp {
@@ -303,7 +303,7 @@ func TestStepPictureRequestLeavesARemovedCodingModel(t *testing.T) {
 	if q := w.questions[1]; q.Title != "Set up pictures for ComfyUI?" {
 		t.Fatalf("question = %+v", q)
 	}
-	if n := w.last(); n.Title != "Ready. Open ComfyUI." || n.Body != "ComfyUI makes pictures on this computer." {
+	if n := w.last(); n.Title != "ComfyUI is ready" || n.Body != "ComfyUI makes pictures on this computer." {
 		t.Fatalf("notice = %+v", n)
 	}
 	state, _ := w.step().Load(context.Background())
@@ -359,7 +359,7 @@ func TestStepRemovalDuringPictureWorkHolds(t *testing.T) {
 				if outcome, err := stop.Run(context.Background()); err != nil || outcome != stepStoppedByUpdate || w.hosted != 1 || w.asked != 1 {
 					t.Fatalf("update Finish = %q, %v hosted %d asked %d", outcome, err, w.hosted, w.asked)
 				}
-				if n := w.last(); n.Title != "Catalog stopped" || n.Body != "Catalog stopped when OpenAbstractions updated. Open Settings to continue." {
+				if n := w.last(); n.Title != "Couldn't finish setup" || n.Body != "Setup paused while OpenAbstractions updated. Open Models and choose Set up." {
 					t.Fatalf("stop notice = %+v", n)
 				}
 				if state, _ := w.step().Load(context.Background()); !state.Approved() || state.Stopped == nil || state.Stopped.Stage != stageUpdate {
@@ -372,7 +372,7 @@ func TestStepRemovalDuringPictureWorkHolds(t *testing.T) {
 			if outcome, err := s.Run(context.Background()); err != nil || outcome != stepSetUp || w.hosted != 1 || w.hostedNow || w.asked != 1 {
 				t.Fatalf("%s = %q, %v hosted %d asked %d", run, outcome, err, w.hosted, w.asked)
 			}
-			if n := w.last(); n.Title != "Ready. Open ComfyUI." || n.Body != "ComfyUI makes pictures on this computer." {
+			if n := w.last(); n.Title != "ComfyUI is ready" || n.Body != "ComfyUI makes pictures on this computer." {
 				t.Fatalf("notice = %+v", n)
 			}
 			finish := f.with(w, w.step())
@@ -438,7 +438,7 @@ func TestStepPicturesFailureNamesComfyUI(t *testing.T) {
 	if outcome, err := f.with(w, w.step()).RunAndReport(context.Background()); err != nil || outcome != stepSetUp {
 		t.Fatalf("a picture failure hid a working OpenCode: %q, %v", outcome, err)
 	}
-	if n := w.last(); n.Title != "OpenCode is ready; ComfyUI setup stopped" || n.Body != "Qwen3.6 35B answers OpenCode on this computer. Pictures could not be set up. Open Settings to try again." {
+	if n := w.last(); n.Title != "OpenCode is ready; couldn't finish setting up ComfyUI" || n.Body != "OpenCode uses Qwen3.6 35B on this computer. Pictures could not be set up. Open Models and choose Set up." {
 		t.Fatalf("failure notice = %+v", n)
 	}
 	state, _ := w.step().Load(context.Background())
@@ -453,7 +453,7 @@ func TestStepPicturesFailureNamesComfyUI(t *testing.T) {
 	if state, _ := w.step().Load(context.Background()); state.PicturesStopped || !state.Granted || w.transfer.reserves != reserves {
 		t.Fatalf("after retry = %+v reserves %d", state, w.transfer.reserves)
 	}
-	if n := w.last(); n.Title != "Ready. Open OpenCode or ComfyUI." {
+	if n := w.last(); n.Title != "OpenCode and ComfyUI are ready" {
 		t.Fatalf("retry notice = %+v", n)
 	}
 	// Pictures alone keep the old shape: one notice that names ComfyUI.
@@ -464,7 +464,7 @@ func TestStepPicturesFailureNamesComfyUI(t *testing.T) {
 	if _, err := f1.with(w1, w1.step()).RunAndReport(context.Background()); err == nil {
 		t.Fatal("a refused grant reported success")
 	}
-	if n := w1.last(); n.Title != "ComfyUI setup stopped" || n.Body != "Pictures could not be set up. Open Settings to try again." {
+	if n := w1.last(); n.Title != "Couldn't finish setting up ComfyUI" || n.Body != "Pictures could not be set up. Open Models and choose Set up." {
 		t.Fatalf("pictures-alone failure notice = %+v", n)
 	}
 	w2 := newStepWorld(t)
@@ -478,7 +478,7 @@ func TestStepPicturesFailureNamesComfyUI(t *testing.T) {
 	if outcome, err := s.RunAndReport(context.Background()); err != nil || outcome != stepSetUp {
 		t.Fatalf("a failed picture download hid a working OpenCode: %q, %v", outcome, err)
 	}
-	if n := w2.last(); n.Title != "OpenCode is ready; ComfyUI setup stopped" || n.Body != "Qwen3.6 35B answers OpenCode on this computer. The picture model download stopped before it finished. Open Settings to try again." {
+	if n := w2.last(); n.Title != "OpenCode is ready; couldn't finish setting up ComfyUI" || n.Body != "OpenCode uses Qwen3.6 35B on this computer. The picture model download stopped before it finished. Open Models and choose Set up." {
 		t.Fatalf("download failure notice = %+v", n)
 	}
 	// Trying again resubmits the failed download, with no new question.
@@ -654,7 +654,7 @@ func TestStepFinishAfterUpdateLeavesReadyWorkStopped(t *testing.T) {
 	if f.configures != 0 || f.engineCalls != engine || w.hosted != hosted || w.asked != 1 {
 		t.Fatalf("update Finish ran work: configures %d engine %d→%d hosted %d→%d asked %d", f.configures, engine, f.engineCalls, hosted, w.hosted, w.asked)
 	}
-	if n := w.last(); n.Title != "Catalog stopped" || n.Body != "Catalog stopped when OpenAbstractions updated. Open Settings to continue." {
+	if n := w.last(); n.Title != "Couldn't finish setup" || n.Body != "Setup paused while OpenAbstractions updated. Open Models and choose Set up." {
 		t.Fatalf("stop notice = %+v", n)
 	}
 	state, _ := w.step().Load(context.Background())

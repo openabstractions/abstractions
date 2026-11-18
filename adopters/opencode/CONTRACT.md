@@ -178,7 +178,7 @@ foreground tool call.
 Asks wake (asks ASK-R14, architect ruling 2026-11-12). While the helper's
 program holds a current answering enrollment, each watch page carries
 `asks_wake`, and a held watch lasts at most 15 seconds. A greater key wakes
-one idle open chat once with the fixed pointer `OA: question to answer.`: the
+one idle open chat once with the fixed pointer `OpenAbstractions: a question is waiting for your answer.`: the
 live chat the person used last. Other chats take the key without a turn, and
 a chat reached only because it is recent and closed is never woken for a
 question. The model lists and answers through `responder@1`.

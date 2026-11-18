@@ -84,7 +84,7 @@ func TestSetupReadsDoNotWaitOnTheStepLock(t *testing.T) {
 	call := installHandlerFor(panel.handler("setup-test-key"))
 	panel.setupActionMu.Lock()
 	defer panel.setupActionMu.Unlock()
-	for _, path := range []string{"/setup/modelhost/coding", "/setup/maintenance"} {
+	for _, path := range []string{"/setup/modelhost/coding"} {
 		answered := make(chan int, 1)
 		go func() { answered <- call("GET", path, "").Code }()
 		select {
@@ -92,5 +92,22 @@ func TestSetupReadsDoNotWaitOnTheStepLock(t *testing.T) {
 		case <-time.After(time.Second):
 			t.Fatalf("GET %s waited behind the step lock", path)
 		}
+	}
+}
+
+// The Panel has no route that opens the installed Setup's own Modify page:
+// a GET or a confirmed POST to the retired /setup/maintenance path is not
+// found, and the Setup page calls no such path.
+func TestSetupOpensNoInstalledSetupMaintenance(t *testing.T) {
+	journal := setup.Journal{Path: filepath.Join(t.TempDir(), "setup", "plan.json")}
+	panel := &servicePanel{setupJournal: &journal}
+	call := installHandlerFor(panel.handler("setup-test-key"))
+	for _, method := range []string{"GET", "POST"} {
+		if got := call(method, "/setup/maintenance", `{"plan_id":"historical","confirm":true}`); got.Code != http.StatusNotFound {
+			t.Fatalf("%s /setup/maintenance answered %d: %s", method, got.Code, got.Body.String())
+		}
+	}
+	if strings.Contains(setupPage, "/setup/maintenance") {
+		t.Fatal("the Setup page still calls /setup/maintenance")
 	}
 }

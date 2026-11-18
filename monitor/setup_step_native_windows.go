@@ -68,8 +68,8 @@ func runSetupStepNative(requester *setup.StepRequester, finish bool, update ...b
 		return false, err
 	}
 	if elevated {
-		return false, stepNotify(context.Background(), setup.StepNotice{Title: "Set up from Settings",
-			Body: "Setup runs with your own rights. Open Settings and choose Set up.", Tag: "setup"})
+		return false, stepNotify(context.Background(), setup.StepNotice{Title: "Set up from Models",
+			Body: "Setup runs with your own rights. Open Models and choose Set up.", Tag: "setup"})
 	}
 	account := probe.Self().Account
 	session.present = func(ctx context.Context, id string, facts map[string]string) (bool, error) {

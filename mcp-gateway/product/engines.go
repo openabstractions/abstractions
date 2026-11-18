@@ -30,7 +30,7 @@ const (
 // the product uses when showing a shipped provider.
 var enginePresentation = map[string]struct{ title, caption string }{
 	ModelHost:           {"llama.cpp", "Runs chat models on this device"},
-	Diffusers:           {"Diffusers", "FLUX.2 Klein pictures and Hummingbird-XT video on AMD graphics"},
+	Diffusers:           {"Diffusers", "Pictures and video on AMD graphics"},
 	DiffusersModelsHost: {title: "Diffusers"},
 	Lemonade:            {"Lemonade", "Pictures, speech and transcription"},
 	TheNoise:            {"TheNoise", "Pictures on the processor"},

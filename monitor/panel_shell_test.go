@@ -95,7 +95,7 @@ func TestNavigationKeepsEveryChoiceVisible(t *testing.T) {
 	for _, m := range labels.FindAllStringSubmatchIndex(nav, -1) {
 		choices = append(choices, nav[m[2]:m[3]])
 	}
-	if strings.Join(choices, ",") != "Apps,Activity,Device,Permissions,Catalog,Models,Providers,Paired PCs,Credentials,Settings" {
+	if strings.Join(choices, ",") != "Apps,Activity,Device,Permissions,Catalog,Models,Services,Paired PCs,Credentials,Settings" {
 		t.Fatalf("visible choices %v", choices)
 	}
 	// One separator, after Get started and before Models (P-J1a).

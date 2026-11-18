@@ -176,7 +176,7 @@ func TestStepAsksOneQuestionThenSetsUp(t *testing.T) {
 	if w.transfer.reserves != 1 || w.hosted != 1 || w.selects != 1 || len(w.confirmed) != 1 || w.confirmed[0] != "opencode" {
 		t.Fatalf("reserves %d hosted %d selects %d confirmed %v", w.transfer.reserves, w.hosted, w.selects, w.confirmed)
 	}
-	if n := w.last(); n.Title != "Ready. Open OpenCode." || n.Body != "Qwen3.6 35B answers OpenCode on this computer." {
+	if n := w.last(); n.Title != "OpenCode is ready" || n.Body != "OpenCode uses Qwen3.6 35B on this computer." {
 		t.Fatalf("last notice = %+v", n)
 	}
 	state, _ := w.step().Load(context.Background())
@@ -659,7 +659,7 @@ func TestStepNoticesPerDownloadAreBounded(t *testing.T) {
 	if start := w.notices[0]; start.Operation != "op-0123456789" || !strings.HasPrefix(start.Body, "Downloading Qwen3.6 35B") {
 		t.Fatalf("start notice = %+v", start)
 	}
-	if end := w.notices[1]; end.Title != "Ready. Open OpenCode." || end.Operation != "" {
+	if end := w.notices[1]; end.Title != "OpenCode is ready" || end.Operation != "" {
 		t.Fatalf("end notice = %+v", end)
 	}
 }
@@ -698,8 +698,8 @@ func TestStepReportsFailureThroughOneNotice(t *testing.T) {
 	if _, err := s.RunAndReport(context.Background()); err == nil {
 		t.Fatal("failure reported success")
 	}
-	if len(w.notices) != 1 || w.notices[0].Title != "OpenCode setup stopped" ||
-		w.notices[0].Body != "OpenAbstractions cannot tell now which model fits this computer. Open Settings to try again." {
+	if len(w.notices) != 1 || w.notices[0].Title != "Couldn't finish setting up OpenCode" ||
+		w.notices[0].Body != "OpenAbstractions cannot tell now which model fits this computer. Open Models and choose Set up." {
 		t.Fatalf("failure notices = %+v", w.notices)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -714,7 +714,7 @@ func TestStepReportsFailureThroughOneNotice(t *testing.T) {
 	if _, err := w2.step().RunAndReport(context.Background()); err == nil {
 		t.Fatal("a failed download reported success")
 	}
-	if n := w2.last(); n.Body != "The model download stopped before it finished. Open Settings to try again." {
+	if n := w2.last(); n.Body != "The model download stopped before it finished. Open Models and choose Set up." {
 		t.Fatalf("download failure notice = %+v", n)
 	}
 	// An owner's mapping replaces Setup's wording.

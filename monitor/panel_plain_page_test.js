@@ -122,7 +122,7 @@ const INCOMPATIBLE = "This Panel and OpenAbstractions don't speak the same versi
 const UNAVAIL = "That service isn't running on this account right now. Check it on the Apps page.";
 const GAP = 'The list changed while reading; start again.';
 const INVALID = 'OpenAbstractions rejected this request.';
-const DEFAULT = "This didn't work.";
+const DEFAULT = "This didn't work. Try again.";
 
 // 1. Each of the six buckets, by its trigger substring.
 assert.strictEqual(oaPlain('forbidden').line, PERMIT);

@@ -35,7 +35,7 @@ const (
 	ToolMessagesWait        = "oa_messages_wait"
 )
 
-const messagesWakeInstructions = "If an OA wake prompt includes a ticket, pass it to oa_messages_wait as wake_ticket. In 'OA: another message (...)', the code in parentheses is the ticket. Stop if nothing is new."
+const messagesWakeInstructions = "If a wake prompt includes a ticket, pass it to oa_messages_wait as wake_ticket. In 'OpenAbstractions: another message (...)', the code in parentheses is the ticket. Stop if nothing is new."
 
 // MessagesReceiverToolNames supplies the catalogue and vendor approval list.
 func MessagesReceiverToolNames() []string {

@@ -42,7 +42,7 @@ var inferencePage = `<div data-ready-owner="page" hidden></div>` + oaPageHead("i
 	runtimeGroup(oaGroup("add-model", "Engines", "", oaStatusLine("models-engine-status", false), `<div id="models-engine-rows"></div>`, oaStatus("add-model-status"), `<div id="add-model-rows"></div>`,
 		`<div id="add-model-folder" hidden>`+oaRow("Folder", "", `<input id="add-model-path" type="text" data-oa-other aria-label="Folder" autocomplete="off" spellcheck="false"><button id="add-model-check" type="button">Check folder</button>`, "add-model-folder-status")+`</div>`,
 		`<div id="add-model-tech" hidden>`+oaTechnicalDetails(`<pre id="add-model-reason"></pre>`)+`</div>`,
-		`<a class="oa-row oa-row-nav" id="models-providers" href="/registry"><span class="oa-row-text"><span class="oa-row-label">Providers</span><span class="oa-row-caption">Add model servers and give apps keys.</span></span><span class="oa-row-chevron" aria-hidden="true"></span></a>`)) +
+		`<a class="oa-row oa-row-nav" id="models-providers" href="/registry"><span class="oa-row-text"><span class="oa-row-label">Services</span><span class="oa-row-caption">Add model servers and give apps keys.</span></span><span class="oa-row-chevron" aria-hidden="true"></span></a>`)) +
 	inferenceScript + `<script>` + setupStepScript + `</script>` + libraryScript + selectionPolicyScript + programReviewPanel
 
 // libraryReadingStatus is a status line that says what it waits for while

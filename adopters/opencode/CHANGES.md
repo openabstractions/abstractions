@@ -37,7 +37,7 @@
 ### Asks, rights and project-folder access
 
 - OpenCode Asks go through its enrolled native MCP helper.
-- An enrolled OpenCode chat is woken once for a question it may answer, with the fixed text "OA: question to answer.".
+- An enrolled OpenCode chat is woken once for a question it may answer, with the fixed text "OpenAbstractions: a question is waiting for your answer.".
 - OpenCode waits for the person's answer and retries once.
 - A permission wait that stays unresolved points the person to Panel Questions.
 - Current permission takes priority over a retained answer.

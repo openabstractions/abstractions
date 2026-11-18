@@ -991,19 +991,19 @@ var (
 // titled who, with no raw error text, hash or path. A lock is a neutral
 // pointer to Settings.
 func stepFailureNotice(err error, who string) (setup.StepNotice, bool) {
-	stopped := "Catalog stopped"
+	stopped := "Couldn't finish setup"
 	if who != "" {
-		stopped = who + " setup stopped"
+		stopped = "Couldn't finish setting up " + who
 	}
 	switch {
 	case errors.Is(err, errStepQuestionClosed):
-		title := "Set up from Settings"
+		title := "Set up from Models"
 		if who != "" {
-			title = "Set up " + who + " from Settings"
+			title = "Set up " + who + " from Models"
 		}
-		return setup.StepNotice{Title: title, Body: "The question closed when this computer locked. Open Settings and choose Set up."}, true
+		return setup.StepNotice{Title: title, Body: "The question closed when this computer locked. Open Models and choose Set up."}, true
 	case errors.Is(err, errStepFit):
-		return setup.StepNotice{Title: stopped, Body: "OpenAbstractions cannot tell now which model fits this computer. Open Settings to try again."}, true
+		return setup.StepNotice{Title: stopped, Body: "OpenAbstractions cannot tell now which model fits this computer. Open Models and choose Set up."}, true
 	}
 	return setup.StepNotice{}, false
 }
@@ -1022,15 +1022,15 @@ func stepClickSentence(action string, open bool) string {
 	case open:
 		return "Catalog is already open."
 	case action == "Show progress":
-		return "Setup continues."
+		return "Continuing…"
 	case action == "Make default":
-		return "Setup makes it the chat default for apps."
+		return "Making it the chat default…"
 	case action == "Check":
-		return "Setup checks what is set up."
+		return "Checking…"
 	case action == "Try pictures again":
-		return "Setup tries pictures again."
+		return "Trying pictures again…"
 	}
-	return "Setup opened its question."
+	return "Answer the question in the window that opened."
 }
 
 // stepInstalledOnly is the row's sentence and the click's answer on a Panel
@@ -1174,7 +1174,7 @@ func runSetupStep(ask func(context.Context, setup.StepQuestion) (bool, error), r
 	step.Finish = finish
 	step.Update = finish && len(update) != 0 && update[0]
 	if err != nil {
-		return finish, stepNotify(context.Background(), setup.StepNotice{Title: "Catalog stopped", Body: "Catalog cannot start here. Open Settings to try again.", Tag: "setup"})
+		return finish, stepNotify(context.Background(), setup.StepNotice{Title: "Couldn't finish setup", Body: "Setup couldn't start. Open Models and choose Set up.", Tag: "setup"})
 	}
 	step.Owners.Notify = presenterFirst(launchPresenter, stepNotify)
 	step.Owners.Failure = stepFailureNotice
@@ -1221,11 +1221,11 @@ func resumeSetupStep(ctx context.Context, launch func() error) error {
 // model, sign-in start and the chat default in one caption, and Set up or
 // Change, which starts the same step. It shows state on arrival. It sits in
 // the Models page's Used by your apps (backlog/P-J1a.md, Models page).
-var setupStepRow = `<div class="oa-row"><div class="oa-row-text"><span class="oa-row-label" id="setup-step-label">Coding model and pictures for apps</span><span class="oa-row-caption" id="setup-step-caption">Reading the established setup.</span></div><div class="oa-row-control"><button id="setup-step-action" type="button">Set up</button></div>` + oaStatusLine("setup-step-status", false) + `</div>`
+var setupStepRow = `<div class="oa-row"><div class="oa-row-text"><span class="oa-row-label" id="setup-step-label">Coding model and pictures for apps</span><span class="oa-row-caption" id="setup-step-caption">Checking…</span></div><div class="oa-row-control"><button id="setup-step-action" type="button">Set up</button></div>` + oaStatusLine("setup-step-status", false) + `</div>`
 
 // setupStepSection is the Settings row of the established setup: the same
 // label and caption, and a link to Models, where Set up and Change are.
-var setupStepSection = `<section id="setup-step" class="oa-group"><h2>Models for apps</h2><div class="oa-row"><div class="oa-row-text"><span class="oa-row-label" id="setup-step-label">Coding model and pictures for apps</span><span class="oa-row-caption" id="setup-step-caption">Reading the established setup.</span></div><div class="oa-row-control"><a id="setup-step-models" href="/inference">Open Models</a></div>` + oaStatusLine("setup-step-status", false) + `</div></section>`
+var setupStepSection = `<section id="setup-step" class="oa-group"><h2>Models for apps</h2><div class="oa-row"><div class="oa-row-text"><span class="oa-row-label" id="setup-step-label">Coding model and pictures for apps</span><span class="oa-row-caption" id="setup-step-caption">Checking…</span></div><div class="oa-row-control"><a id="setup-step-models" href="/inference">Open Models</a></div>` + oaStatusLine("setup-step-status", false) + `</div></section>`
 
 // setupStepRead reads /setup/step into the row's label and caption; it
 // needs the page's call and el.

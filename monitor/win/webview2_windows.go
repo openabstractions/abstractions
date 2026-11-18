@@ -22,7 +22,8 @@ package win
 //	                          AddWebResourceRequestedFilter (the in-process
 //	                          resources, webview2_resources_windows.go)
 //	ICoreWebView2Settings     PutAreDefaultContextMenusEnabled,
-//	                          PutAreDevToolsEnabled
+//	                          PutAreDevToolsEnabled,
+//	                          PutAreDefaultScriptDialogsEnabled
 //
 // plus the two completed-handler callbacks
 // (ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler,
@@ -928,6 +929,9 @@ func (w *webView2Window) finish(pageURL string) error {
 		uintptr(unsafe.Pointer(webview)), uintptr(unsafe.Pointer(&settings))); int32(hr) == 0 && settings != nil {
 		settings.vtbl.PutAreDefaultContextMenusEnabled.call(uintptr(unsafe.Pointer(settings)), 0)
 		settings.vtbl.PutAreDevToolsEnabled.call(uintptr(unsafe.Pointer(settings)), 0)
+		// A page asks in its own window; alert, confirm and prompt open
+		// nothing and confirm answers false.
+		settings.vtbl.PutAreDefaultScriptDialogsEnabled.call(uintptr(unsafe.Pointer(settings)), 0)
 	}
 
 	w.resize()

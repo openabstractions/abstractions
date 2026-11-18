@@ -178,7 +178,7 @@ func TestAgentMessagesSwitchLivesOnThePermissionsPage(t *testing.T) {
 	}
 	// No On or Off shows before the first read: the switch is hidden and its
 	// status line loading.
-	group := runtimeGroup(oaGroup("agent-messages", "Messages between agents", agentMessagesCaption, strings.Replace(oaRow("Ask me first", "What you answered for one agent still applies.", `<input type="checkbox" class="switch" id="agent-messages-ask" aria-label="Ask before an agent messages another" disabled hidden>`, "agent-messages-status"), oaStatusLine("agent-messages-status", false), oaStatus("agent-messages-status"), 1)))
+	group := runtimeGroup(oaGroup("agent-messages", "Messages between agents", agentMessagesCaption, strings.Replace(oaRow("Ask me first", "", `<input type="checkbox" class="switch" id="agent-messages-ask" aria-label="Ask before an agent messages another" disabled hidden>`, "agent-messages-status"), oaStatusLine("agent-messages-status", false), oaStatus("agent-messages-status"), 1)))
 	if !strings.Contains(group, `data-state="loading"`) {
 		t.Fatal("the agents status line does not start loading")
 	}

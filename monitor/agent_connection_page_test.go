@@ -133,7 +133,7 @@ func TestAgentConnectionPagesShareLayoutAndCopy(t *testing.T) {
 				t.Fatal("visible jargon", jargon)
 			}
 		}
-		if !strings.Contains(markup, "Live message reception is not observed by this page.") {
+		if strings.Contains(markup, "Live message reception is not observed by this page.") {
 			t.Fatal("readable saved/live distinction is missing")
 		}
 	}

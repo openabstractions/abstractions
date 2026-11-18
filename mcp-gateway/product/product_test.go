@@ -68,7 +68,7 @@ func TestModelTitlesKeepsSeparatePresentationAudiences(t *testing.T) {
 func TestEnginePresentationUsesSpecificCaptionsOnlyWhereDeclared(t *testing.T) {
 	for provider, want := range map[string]string{
 		ModelHost:           "Runs chat models on this device",
-		Diffusers:           "FLUX.2 Klein pictures and Hummingbird-XT video on AMD graphics",
+		Diffusers:           "Pictures and video on AMD graphics",
 		DiffusersModelsHost: "",
 		Lemonade:            "Pictures, speech and transcription",
 		TheNoise:            "Pictures on the processor",

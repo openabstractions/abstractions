@@ -58,8 +58,8 @@ func launchQuestionPanel() error {
 	return nil
 }
 
-// Repair opens the existing Setup maintenance owner. Installer identity review
-// and its explicit confirmation remain in that page; this launches no repair.
+// Repair opens the Panel's Setup page, where the person reviews and confirms
+// the repair; this launches no repair.
 func launchProgramRepairPanel() error {
 	program, err := panelExecutable()
 	if err != nil {

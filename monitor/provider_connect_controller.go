@@ -15,14 +15,14 @@ func (e providerConnectError) NativeCredentialMessage() string { return string(e
 const (
 	errProviderBudgetPending     providerConnectError = "Daily limits for this app are not available yet. Nothing was allowed."
 	errProviderKeyRejected       providerConnectError = "That key didn't work."
-	errProviderConnectionChanged providerConnectError = "This request changed. Nothing was allowed; check it again."
-	errProviderStore             providerConnectError = "The key could not be stored. Nothing was allowed."
-	errProviderHost              providerConnectError = "The model server could not be configured. Earlier setup steps were kept."
-	errProviderBudget            providerConnectError = "The daily limit could not be confirmed. Earlier setup steps were kept."
+	errProviderConnectionChanged providerConnectError = "The request changed. Try again."
+	errProviderStore             providerConnectError = "Couldn't save the key. Try again."
+	errProviderHost              providerConnectError = "Couldn't set up the model server. Try again."
+	errProviderBudget            providerConnectError = "Couldn't set the daily limit. Try again."
 	errProviderCostUnreported    providerConnectError = "Cost was not reported for this app today. The spending limit is unavailable."
-	errProviderRights            providerConnectError = "The app's use permission could not be confirmed. Earlier setup steps were kept."
-	errProviderReadback          providerConnectError = "The connection could not be confirmed. Earlier setup steps were kept."
-	errProviderPermissionRemoved providerConnectError = "The permission was removed. Finish setup did not restore it."
+	errProviderRights            providerConnectError = "Couldn't give the app access. Try again."
+	errProviderReadback          providerConnectError = "Couldn't confirm the connection. Try again."
+	errProviderPermissionRemoved providerConnectError = "Access was removed. Connect again to restore it."
 )
 
 // providerKeyForm is a process-private native field controller. It is never

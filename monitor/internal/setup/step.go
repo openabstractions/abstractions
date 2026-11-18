@@ -227,17 +227,17 @@ func stageOf(err error) string {
 func stoppedReason(stage string) string {
 	switch stage {
 	case stageJournal:
-		return "Setup could not read its record of this step."
+		return "Setup progress couldn't be read. Try again."
 	case stageApps:
 		return "OpenAbstractions could not read which apps are installed."
 	case stageFit:
 		return "OpenAbstractions cannot tell now which model fits this computer."
 	case stagePlan:
-		return "This Setup has no reviewed download for the model that fits this computer."
+		return "No download is available for the model that fits this computer."
 	case stageQuestion:
 		return "The setup question could not be shown."
 	case stageAnswer:
-		return "Setup could not save your answer."
+		return "Your answer couldn't be saved. Try again."
 	case stageConfirm:
 		return "OpenAbstractions could not ask whether to keep the app."
 	case stageDownload:
@@ -253,11 +253,24 @@ func stoppedReason(stage string) string {
 	case stageGrant:
 		return "The app could not be given the use of the model."
 	case stageUpdate:
-		return "Catalog stopped when OpenAbstractions updated."
+		return "Setup paused while OpenAbstractions updated. Choose Set up to continue."
 	case stageVideo:
 		return "Video with sound could not be set up."
 	}
-	return "Setup could not finish."
+	return "Setup couldn't finish. Try again."
+}
+
+// openModels is the sentence a stopped-step notice ends with: the Models
+// page holds Set up.
+const openModels = "Open Models and choose Set up."
+
+// noticeReason is a stopped reason in a notice, which says where to try
+// again instead of "Try again." or "Choose Set up to continue."
+func noticeReason(reason string) string {
+	for _, tail := range []string{" Try again.", " Choose Set up to continue."} {
+		reason = strings.TrimSuffix(reason, tail)
+	}
+	return reason + " " + openModels
 }
 
 // Ready reports a finished step; Approved approved work still running;
@@ -661,7 +674,7 @@ func (s SetupStep) stopForUpdate(ctx context.Context) (stepOutcome, error) {
 	}); err != nil {
 		return "", atStage(stageJournal, err)
 	}
-	return stepStoppedByUpdate, s.notify(ctx, StepNotice{Title: "Catalog stopped", Body: stopped.Reason + " Open Settings to continue.", Tag: "setup"})
+	return stepStoppedByUpdate, s.notify(ctx, StepNotice{Title: stoppedTitle(""), Body: noticeReason(stopped.Reason), Tag: "setup"})
 }
 
 // RunAndReport is one run of the step that reports its own failure through
@@ -683,7 +696,7 @@ func (s SetupStep) RunAndReport(ctx context.Context) (stepOutcome, error) {
 // leaves the phase as it was, and through Owners.Record in OA logging. A
 // logging service that is not ready loses nothing the journal keeps.
 func (s SetupStep) recordStopped(ctx context.Context, err error, notice StepNotice, subject StepTitles) error {
-	stopped := StepStopped{Stage: stageOf(err), Reason: strings.TrimSuffix(notice.Body, " Open Settings to try again."), Detail: err.Error(), At: s.now()}
+	stopped := StepStopped{Stage: stageOf(err), Reason: strings.TrimSuffix(notice.Body, " "+openModels), Detail: err.Error(), At: s.now()}
 	if stopped.Stage == "" {
 		stopped.Stage = "unknown"
 	}
@@ -752,9 +765,31 @@ func (s StepTitles) All() string {
 // stoppedTitle heads a failure notice about who.
 func stoppedTitle(who string) string {
 	if who == "" {
-		return "Catalog stopped"
+		return "Couldn't finish setup"
 	}
-	return who + " setup stopped"
+	return "Couldn't finish setting up " + who
+}
+
+// severalApps reports whether who names more than one app: joinWords output
+// with "and", or no title at all, which reads as "apps".
+func severalApps(who string) bool {
+	return who == "" || strings.Contains(who, " and ")
+}
+
+// verbFor picks the singular or plural verb for who.
+func verbFor(who, one, many string) string {
+	if severalApps(who) {
+		return many
+	}
+	return one
+}
+
+// lowerFirst lowercases a clause that follows a semicolon.
+func lowerFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToLower(s[:1]) + s[1:]
 }
 
 // orApps is who, or "apps" when no title was read.
@@ -780,15 +815,15 @@ func (s SetupStep) failureNotice(err error, subject StepTitles) StepNotice {
 	}
 	if errors.Is(err, errStepPictures) {
 		if errors.Is(err, errStepDownload) {
-			return StepNotice{Title: stoppedTitle(subject.Pictures), Body: "The picture model download stopped before it finished. Open Settings to try again.", Tag: "setup"}
+			return StepNotice{Title: stoppedTitle(subject.Pictures), Body: "The picture model download stopped before it finished. " + openModels, Tag: "setup"}
 		}
-		return StepNotice{Title: stoppedTitle(subject.Pictures), Body: "Pictures could not be set up. Open Settings to try again.", Tag: "setup"}
+		return StepNotice{Title: stoppedTitle(subject.Pictures), Body: "Pictures could not be set up. " + openModels, Tag: "setup"}
 	}
 	who := subject.Chat
 	if who == "" {
 		who = subject.All()
 	}
-	return StepNotice{Title: stoppedTitle(who), Body: stoppedReason(stageOf(err)) + " Open Settings to try again.", Tag: "setup"}
+	return StepNotice{Title: stoppedTitle(who), Body: noticeReason(stoppedReason(stageOf(err))), Tag: "setup"}
 }
 
 // Run is one run of the step. A set-up account hears "Already set up" and
@@ -911,7 +946,7 @@ func (s SetupStep) run(ctx context.Context) (stepOutcome, StepTitles, error) {
 		return stepNoApp, subject, nil
 	}
 	if len(code) == 0 && pictures == nil {
-		return stepNoApp, subject, s.notify(ctx, StepNotice{Title: "Nothing to set up", Body: "Install an app with OpenAbstractions Setup, then set it up from Settings.", Tag: "setup"})
+		return stepNoApp, subject, s.notify(ctx, StepNotice{Title: "Nothing to set up", Body: "Install an app from the Catalog, then open Models and choose Set up.", Tag: "setup"})
 	}
 	var pick *StepPick
 	var plan ModelPlan
@@ -1302,7 +1337,7 @@ func (s SetupStep) finish(ctx context.Context, state StepState, subject StepTitl
 			if err := s.recordStopped(ctx, picturesErr, stopped, subject); err != nil {
 				return "", errors.Join(picturesErr, err)
 			}
-			return stepSetUp, s.notify(ctx, StepNotice{Title: orApps(subject.Chat) + " is ready; " + stoppedTitle(subject.Pictures),
+			return stepSetUp, s.notify(ctx, StepNotice{Title: orApps(subject.Chat) + verbFor(subject.Chat, " is", " are") + " ready; " + lowerFirst(stoppedTitle(subject.Pictures)),
 				Body: readySentence(state.Title, subject, false) + " " + stopped.Body, Tag: "setup"})
 		}
 	}
@@ -1678,20 +1713,37 @@ func readyTitle(subject StepTitles, chat, pictures bool) string {
 	if chat {
 		open = append(open, orApps(subject.Chat))
 	}
-	if pictures {
+	if pictures && (!chat || orApps(subject.Pictures) != orApps(subject.Chat)) {
 		open = append(open, orApps(subject.Pictures))
 	}
-	return "Ready. Open " + joinWords(open, "or") + "."
+	if len(open) == 1 && open[0] != "apps" {
+		return open[0] + " is ready"
+	}
+	return upperFirst(joinWords(open, "and")) + " are ready"
 }
 
+// readySentence names the chat model the apps use, by its display title.
 func readySentence(title string, subject StepTitles, pictures bool) string {
+	uses := subject.Chat + verbFor(subject.Chat, " uses ", " use ")
+	if subject.Chat == "" {
+		uses = "Apps use "
+	}
+	makes := verbFor(subject.Pictures, " makes", " make")
 	switch {
 	case title != "" && pictures:
-		return title + " answers " + orApps(subject.Chat) + " and " + orApps(subject.Pictures) + " makes pictures on this computer."
+		return uses + title + " and " + orApps(subject.Pictures) + makes + " pictures on this computer."
 	case pictures:
-		return orApps(subject.Pictures) + " makes pictures on this computer."
+		return upperFirst(orApps(subject.Pictures)) + makes + " pictures on this computer."
 	}
-	return title + " answers " + orApps(subject.Chat) + " on this computer."
+	return uses + title + " on this computer."
+}
+
+// upperFirst capitalizes a sentence that starts with a plain word.
+func upperFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 // stepQuestion words the one question: what each app gets, the download and

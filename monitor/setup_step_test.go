@@ -154,7 +154,7 @@ func TestSetupStepSettingsRowHasNoEmptyField(t *testing.T) {
 			t.Errorf("%s: empty field in %+v", c.name, got)
 		}
 	}
-	if !strings.Contains(settingsPage, `id="setup-step-caption">Reading the established setup.<`) || !strings.Contains(settingsPage, "setupStepLoad();") ||
+	if !strings.Contains(settingsPage, `id="setup-step-caption">Checking…<`) || !strings.Contains(settingsPage, "setupStepLoad();") ||
 		!strings.Contains(settingsPage, `id="setup-step-label">Coding model and pictures for apps<`) {
 		t.Fatal("the Settings page has no setup row that shows state on arrival")
 	}
@@ -305,12 +305,12 @@ func TestSetupStepStartsThePresenterOnceBeforeItsFirstNotice(t *testing.T) {
 	var events []string
 	notify := presenterFirst(func() error { events = append(events, "presenter"); return nil },
 		func(_ context.Context, n setup.StepNotice) error { events = append(events, n.Title); return nil })
-	for _, title := range []string{"Setting up OpenCode", "Ready. Open OpenCode."} {
+	for _, title := range []string{"Setting up OpenCode", "OpenCode is ready"} {
 		if err := notify(context.Background(), setup.StepNotice{Title: title}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if want := []string{"presenter", "Setting up OpenCode", "Ready. Open OpenCode."}; !reflect.DeepEqual(events, want) {
+	if want := []string{"presenter", "Setting up OpenCode", "OpenCode is ready"}; !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v", events)
 	}
 	failing := presenterFirst(func() error { return errors.New("no presenter") },
@@ -329,13 +329,13 @@ func TestSetupStepClickSentencePerState(t *testing.T) {
 		open bool
 		want string
 	}{
-		{"new", stepViewOf(setup.StepState{}, chatSubject, on, nil, false, nil), false, "Setup opened its question."},
-		{"running", stepViewOf(setup.StepState{Progress: "approved", Title: "Qwen3.6 35B"}, chatSubject, on, nil, false, nil), false, "Setup continues."},
-		{"selected", stepViewOf(ready, chatSubject, on, nil, true, nil), false, "Setup checks what is set up."},
-		{"not the default", stepViewOf(ready, chatSubject, on, nil, false, nil), false, "Setup makes it the chat default for apps."},
+		{"new", stepViewOf(setup.StepState{}, chatSubject, on, nil, false, nil), false, "Answer the question in the window that opened."},
+		{"running", stepViewOf(setup.StepState{Progress: "approved", Title: "Qwen3.6 35B"}, chatSubject, on, nil, false, nil), false, "Continuing…"},
+		{"selected", stepViewOf(ready, chatSubject, on, nil, true, nil), false, "Checking…"},
+		{"not the default", stepViewOf(ready, chatSubject, on, nil, false, nil), false, "Making it the chat default…"},
 		// The default cannot be read: the row shows Check, and the click
 		// sentence says Check's sentence.
-		{"default unreadable", stepViewOf(ready, chatSubject, on, nil, false, errors.New("down")), false, "Setup checks what is set up."},
+		{"default unreadable", stepViewOf(ready, chatSubject, on, nil, false, errors.New("down")), false, "Checking…"},
 		{"open", stepViewOf(ready, chatSubject, on, nil, true, nil), true, "Catalog is already open."},
 	}
 	for _, c := range cases {
@@ -352,8 +352,8 @@ func TestSetupStepClickSentencePerState(t *testing.T) {
 // a lock is a neutral pointer to Settings.
 func TestSetupStepFailureNoticesAreSentences(t *testing.T) {
 	cases := map[error]string{
-		fmt.Errorf("%w: %s", errStepFit, model.FitOutcomeUnavailable): "OpenAbstractions cannot tell now which model fits this computer. Open Settings to try again.",
-		errStepQuestionClosed: "The question closed when this computer locked. Open Settings and choose Set up.",
+		fmt.Errorf("%w: %s", errStepFit, model.FitOutcomeUnavailable): "OpenAbstractions cannot tell now which model fits this computer. Open Models and choose Set up.",
+		errStepQuestionClosed: "The question closed when this computer locked. Open Models and choose Set up.",
 	}
 	for err, want := range cases {
 		n, ok := stepFailureNotice(err, "OpenCode")
@@ -361,10 +361,10 @@ func TestSetupStepFailureNoticesAreSentences(t *testing.T) {
 			t.Errorf("%v: %+v %v", err, n, ok)
 		}
 	}
-	if n, _ := stepFailureNotice(errStepQuestionClosed, "OpenCode"); n.Title != "Set up OpenCode from Settings" {
+	if n, _ := stepFailureNotice(errStepQuestionClosed, "OpenCode"); n.Title != "Set up OpenCode from Models" {
 		t.Fatalf("a lock reads as a failure: %+v", n)
 	}
-	if n, _ := stepFailureNotice(errStepFit, ""); n.Title != "Catalog stopped" {
+	if n, _ := stepFailureNotice(errStepFit, ""); n.Title != "Couldn't finish setup" {
 		t.Fatalf("no app read: %+v", n)
 	}
 	if _, ok := stepFailureNotice(errors.New("something else"), "OpenCode"); ok {

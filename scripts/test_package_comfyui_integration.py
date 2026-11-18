@@ -38,6 +38,23 @@ class NativeGraphRosterTests(unittest.TestCase):
             # This receives the real selected source payload, without wheels,
             # native ABI execution or a claim of a qualified product ZIP.
 
+    def test_public_repository_layout_stages_no_go_sources(self):
+        # The public adopter-comfyui repository holds connector/ (Go) at its root beside the nodes.
+        root = Path(__file__).resolve().parents[1]
+        owner = extension_payload_owner(root / "installer/apps/build_extension.py")
+        with tempfile.TemporaryDirectory() as owned:
+            public = Path(owned) / "adopter-comfyui"
+            shutil.copytree(root / "openabstractions-flat/adopter-comfyui", public,
+                            ignore=shutil.ignore_patterns("__pycache__", "build"))
+            shutil.copytree(root / "adopters/comfyui/connector", public / "connector")
+            included = owner.include_files([{"from": "adopter-comfyui", "to": "oa_nodes"}], [], root=Path(owned))
+            names = {name.as_posix() for name in included}
+            self.assertIn("oa_nodes/__init__.py", names)
+            self.assertIn("oa_nodes/service.py", names)
+            self.assertFalse([name for name in names if name.endswith(".go")
+                              or name.rsplit("/", 1)[-1] in ("go.mod", "go.sum")])
+            self.assertFalse([name for name in names if name.startswith("oa_nodes/connector/")])
+
     def test_selected_wrapper_loads_the_graph_bridge_with_no_frontend_pin(self):
         root = Path(__file__).resolve().parents[1]
         node = root / "adopters/comfyui/node"

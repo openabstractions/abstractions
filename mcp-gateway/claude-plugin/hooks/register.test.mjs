@@ -285,7 +285,7 @@ test('classic startup and prompt hints use only authoritative summary fields', a
     const f=fixture(); f.page={...f.page,unread:3,pending_questions:1,oldest_unread_unix_ms:100};
     const hint=await f.event(name,{source:'startup'});
     assert.ok(Array.isArray(hint.additionalContext));
-    assert.match(hint.additionalContext[0],/3 unread; 1 pending questions/);
+    assert.match(hint.additionalContext[0],/new messages: 3, questions waiting: 1/);
     assert.equal(f.entered.length,0);
     await f.event('session.end');
     const old=fixture(); const plain=await old.event(name,{source:'startup'});
@@ -474,7 +474,7 @@ test('an enrolled answerer chat wakes once per new Asks key and never for an emp
   await f.event('session.start');await f.tick();assert.equal(f.submitted.length,0);
   f.advance(15000);await f.tick();assert.equal(f.submitted.length,0,'an empty watch ran the model');
   f.page.asks_wake='1762950000000.0000000001';f.advance(15000);await f.tick();
-  assert.equal(f.submitted.length,1);assert.equal(f.entered.length,1);assert.equal(f.entered[0].text,'OA: question to answer.');
+  assert.equal(f.submitted.length,1);assert.equal(f.entered.length,1);assert.equal(f.entered[0].text,'OpenAbstractions: a question is waiting for your answer.');
   await f.event('turn.complete');await new Promise(resolve=>setImmediate(resolve));
   f.advance(15000);await f.tick();assert.equal(f.submitted.length,1,'the same question woke the chat twice');
   f.page.asks_wake='';f.advance(15000);await f.tick();assert.equal(f.submitted.length,1);
@@ -664,7 +664,7 @@ test('ask deny and unknown permission stay quiet without background MCP or promp
     for (let n = 0; n < 40; n++) { await f.tick(); f.advance(1000); }
     assert.equal(f.checks.length, 40);
     assert.equal(f.calls.length, 0); assert.equal(f.submitted.length, 0);
-    assert.equal(f.statuses.length, 1); assert.match(f.statuses[0], /Pictures.*need permission/);
+    assert.equal(f.statuses.length, 1); assert.match(f.statuses[0], /Pictures.*Messages need your OK\. Allow them in OpenAbstractions Panel\.$/);
     assert.equal(f.timers.size, 1, 'permission checks can resume after explicit host allow');
     await f.event('session.end');
   }
@@ -799,14 +799,14 @@ test('ten incoming messages coalesce into one counts-only context for the active
   await f.event('turn.start');
   f.page = {...f.page, revision:'refilled', wake:'0012', oldest_wake:'0012', unread:1, pending_questions:1};
   await f.tick();
-  assert.match((await f.event('classic.PostToolUse', boundary)).additionalContext[1], /1 unread; 1 pending questions/,
+  assert.match((await f.event('classic.PostToolUse', boundary)).additionalContext[1], /new messages: 1, questions waiting: 1/,
     'a refill immediately after authoritative consumption failed to wake');
   f.page = {...f.page, revision:'read', wake:'', oldest_wake:'', pending_questions:0};
   await f.tick();
   assert.equal(await f.event('classic.PostToolUse', boundary), existing, 'already surfaced inbox records triggered a pointer');
   f.page = {...f.page, revision:'fresh', wake:'0013', unread:1, pending_questions:1};
   await f.tick();
-  assert.match((await f.event('classic.PostToolUse', boundary)).additionalContext[1], /1 unread; 1 pending questions/);
+  assert.match((await f.event('classic.PostToolUse', boundary)).additionalContext[1], /new messages: 1, questions waiting: 1/);
 
   f.page = {...f.page, revision:'empty', unread:0, pending_questions:0};
   await f.tick();
@@ -828,9 +828,9 @@ test('only service-projected waiting asks and awaited replies share the urgent i
   await f.tick();
   const ordinary = (await finishTool()).additionalContext;
   assert.equal(ordinary.length, 1);
-  assert.match(ordinary[0], /1 unread; 1 pending questions/);
-  assert.match(ordinary[0], /1 questions or choices to review/);
-  assert.doesNotMatch(ordinary[0], /awaiting an answer|replies to questions you asked/);
+  assert.match(ordinary[0], /new messages: 1, questions waiting: 1/);
+  assert.match(ordinary[0], /questions or choices to review: 1./);
+  assert.doesNotMatch(ordinary[0], /waiting for an answer|replies to your questions/);
 
   f.page = {...f.page, revision:'first-cleared', wake:'', oldest_wake:'', unread:0, pending_questions:0, asks_wake:'', answerable_asks:0};
   await f.tick();
@@ -839,8 +839,8 @@ test('only service-projected waiting asks and awaited replies share the urgent i
   await f.tick();
   const urgent = (await finishTool()).additionalContext;
   assert.equal(urgent.length, 1);
-  assert.match(urgent[0], /1 replies to questions you asked/);
-  assert.match(urgent[0], /1 questions awaiting an answer/);
+  assert.match(urgent[0], /replies to your questions: 1./);
+  assert.match(urgent[0], /questions waiting for an answer: 1./);
   f.page = {...f.page, revision:'empty', wake:'', oldest_wake:'', unread:0, awaited_replies:0, asks_wake:'', waiting_asks_wake:'',
     answerable_asks:0, waiting_asks:0};
   await f.tick();
@@ -852,15 +852,15 @@ test('only service-projected waiting asks and awaited replies share the urgent i
   f.advance(1);
   const waiting = (await finishTool()).additionalContext;
   assert.equal(waiting.length, 1);
-  assert.match(waiting[0], /1 questions awaiting an answer/);
-  assert.doesNotMatch(waiting[0], /2 questions|shared choices/);
+  assert.match(waiting[0], /questions waiting for an answer: 1./);
+  assert.doesNotMatch(waiting[0], /questions[^:]*: 2(?![0-9])|shared choices/);
   assert.deepEqual(await finishTool(), {});
   f.page = {...f.page, revision:'other-while-asks-pending', wake:'0003', oldest_wake:'0003', unread:1, pending_questions:1};
   await f.tick();
   assert.deepEqual(await finishTool(), {}, 'ordinary Messages repeated an unconsumed Asks pointer');
   f.page = {...f.page, revision:'asks-answered', asks_wake:'', waiting_asks_wake:'', answerable_asks:0, waiting_asks:0};
   await f.tick();
-  assert.match((await finishTool()).additionalContext[0], /1 unread; 1 pending questions/);
+  assert.match((await finishTool()).additionalContext[0], /new messages: 1, questions waiting: 1/);
   await f.event('session.end');
 });
 
@@ -880,7 +880,7 @@ test('an already queued ask is coalesced when it gains a waiting app', async () 
   await f.tick();
   f.page = {...f.page, asks_wake:'0002', answerable_asks:1, waiting_asks:1, waiting_asks_wake:'0002'};
   await f.tick();
-  assert.match((await f.event('classic.PostToolUse', {session_id:'vendor-owned-session', tool_name:'Read'})).additionalContext[0], /1 questions awaiting an answer/);
+  assert.match((await f.event('classic.PostToolUse', {session_id:'vendor-owned-session', tool_name:'Read'})).additionalContext[0], /questions waiting for an answer: 1./);
   await f.event('session.end');
 });
 
@@ -892,13 +892,13 @@ test('only exact Asks coverage retires a pointer, and uncertainty cannot stop un
   await f.event('session.start');
   await f.event('turn.start');
   await f.tick();
-  assert.match((await finishTool()).additionalContext[0], /2 questions or choices/);
+  assert.match((await finishTool()).additionalContext[0], /questions or choices to review: 2/);
   f.page = {...f.page, revision:'old-and-new', asks_wake:'0003', oldest_asks_wake:'0002', answerable_asks:2};
   await f.tick();
   assert.deepEqual(await finishTool(), {}, 'B is still covered by the A+B pointer');
   f.page = {...f.page, revision:'fast-refill', oldest_asks_wake:'0003', answerable_asks:1};
   await f.tick();
-  assert.match((await finishTool()).additionalContext[0], /1 questions or choices/);
+  assert.match((await finishTool()).additionalContext[0], /questions or choices to review: 1/);
 
   f.page = {...f.page, revision:'asks-unknown', asks_wake:'', oldest_asks_wake:'', answerable_asks:undefined,
     wake:'0001', oldest_wake:'0001', unread:1, pending_questions:1};
@@ -914,7 +914,7 @@ test('only exact Asks coverage retires a pointer, and uncertainty cannot stop un
   assert.deepEqual(await finishTool(), {});
   f.page = {...f.page, revision:'asks-reenrolled', asks_wake:'0004', oldest_asks_wake:'0004', answerable_asks:1};
   await f.tick();
-  assert.match((await finishTool()).additionalContext[0], /1 questions or choices/);
+  assert.match((await finishTool()).additionalContext[0], /questions or choices to review: 1/);
   await f.event('session.end');
 });
 
@@ -1287,4 +1287,17 @@ test('turn signals and reservations carry the key the Mod registered', async () 
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(taken.turnKeys, [undefined], 'a refused key was sent with a turn signal');
   await taken.event('session.end');
+});
+
+test('a wake pointer with the earlier "OA: " prefix stays valid across the upgrade', async () => {
+  const source = moduleSource.replace('__OA_MESSAGES_WAKE_PROMPT__', JSON.stringify(wakeTemplates)) + '\nexport {validPointer};\n';
+  const {validPointer} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+  const ticket = '0000000a';
+  const current = wakeTemplates.repeat.replaceAll('{ticket}', ticket);
+  assert.ok(current.startsWith('OpenAbstractions: '));
+  assert.equal(validPointer(current, ticket), true);
+  assert.equal(validPointer('OA: ' + current.slice('OpenAbstractions: '.length), ticket), true);
+  const first = wakeTemplates.first.replaceAll('{ticket}', ticket).replaceAll('{sender}', 'Codex');
+  assert.equal(validPointer('OA: ' + first.slice('OpenAbstractions: '.length), ticket), true);
+  assert.equal(validPointer('OB: ' + current.slice('OpenAbstractions: '.length), ticket), false);
 });

@@ -96,12 +96,26 @@ func TestMessagesCatalogueCarriesReceiverInstructions(t *testing.T) {
 	for _, text := range []string{
 		"ping or message Claude", "oa_messages_prepare", "never look them up as models",
 		"OA accepts it only for a question addressed to this chat that is still open",
-		"If an OA wake prompt includes a ticket, pass it to oa_messages_wait as wake_ticket",
-		"In 'OA: another message (...)', the code in parentheses is the ticket",
+		"If a wake prompt includes a ticket, pass it to oa_messages_wait as wake_ticket",
+		"In 'OpenAbstractions: another message (...)', the code in parentheses is the ticket",
 	} {
 		if !strings.Contains(document.Instructions, text) {
 			t.Fatal(document.Instructions)
 		}
+	}
+	// The instructions quote the repeat wake prompt the hosts deliver, so a
+	// model finds the ticket in it.
+	var wake struct {
+		WakePrompt struct {
+			Repeat string `json:"repeat"`
+		} `json:"wake_prompt"`
+	}
+	if err := json.Unmarshal(data, &wake); err != nil {
+		t.Fatal(err)
+	}
+	quoted, _, ok := strings.Cut(wake.WakePrompt.Repeat, "{ticket}")
+	if !ok || !strings.Contains(document.Instructions, "'"+quoted+"...)'") {
+		t.Fatalf("instructions do not quote the repeat wake prompt %q: %s", wake.WakePrompt.Repeat, document.Instructions)
 	}
 }
 

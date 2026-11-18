@@ -86,8 +86,8 @@ unconfirmed and triggers no automatic acknowledgment retry.
 
 The Windows user delivery is **OpenCode with OA**: the official OpenCode
 Desktop installer and an app-owned per-user integration MSI, offered by
-OpenAbstractions Setup. Its source is in `installer/`. The installer slice is
-under qualification; no published or installed Desktop result is claimed here.
+OpenAbstractions Setup. Its source is in `installer/`. On Windows, the Panel's
+Apps Catalog installs or repairs it.
 The completed user flow requires no Python, Node setup, or manual plugin command.
 It keeps OpenCode's normal profile, shortcut, updates and file associations.
 Installing grants no OA permission. Close OpenCode fully before changing the

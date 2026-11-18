@@ -483,6 +483,11 @@ func trayQuestionViewForContent(record askclient.RecordMetadata, publisher trayP
 		if rest, ok := strings.CutPrefix(record.Text, record.Asker+" "); ok && record.Asker != "" && name != "" {
 			heading = name + " " + rest
 		}
+		// Connection titles read "<App> integration"; the person knows the
+		// app ("Connect Claude?").
+		if record.Key == asks.AgentEnrollmentKey {
+			heading = strings.ReplaceAll(heading, " integration", "")
+		}
 		if retained != nil && name != "" {
 			if words, ok := asks.QuestionPresentation(record.Key, name, retained.Slots); ok {
 				heading, content = words.Heading, words.Body

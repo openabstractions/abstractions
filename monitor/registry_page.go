@@ -32,7 +32,7 @@ func oaEmptyHidden(id, sentence string) string {
 	return `<p class="oa-empty" id="` + id + `" hidden>` + sentence + `</p>`
 }
 
-var registryPage = oaPageHead("registry", "Providers", "Where models run.") + `<div data-ready-owner="page" hidden></div>` +
+var registryPage = oaPageHead("registry", "Services", "Model servers and background services.") + `<div data-ready-owner="page" hidden></div>` +
 	`<section id="hosts-section" data-runtime-echo class="oa-group"><h2>Model servers</h2>` + oaStatus("hosts-status") +
 	`<div id="hosts"></div>` + oaEmptyHidden("hosts-empty", "No model servers registered.") +
 	oaExpander("Add a model server", `<form id="host-add">`+
@@ -56,7 +56,7 @@ var registryPage = oaPageHead("registry", "Providers", "Where models run.") + `<
 		oaRow("Key", "", `<select id="key-credential" aria-label="Key"><option value="">None</option></select>`, "")+
 		oaRow("Issue", "", `<button id="key-issue-button" type="submit" data-status="keys-status">Issue key</button>`, "")+
 		`</form>`) + `<div id="key-shown-row" hidden>` + oaRow("New key, shown once", "Give it to that app as its API key, with the gateway as its base URL.", `<code id="key-shown" data-oa-secret></code><button id="key-copy" type="button">Copy</button>`, "key-copy-status") + `</div></section>
-<section id="providers-section" data-runtime-echo class="oa-group"><h2>Providers</h2><p class="oa-caption">Programs that provide services on this computer.</p>` + oaStatus("registry-status") + oaStatusLine("providers-status", false) + oaStatusLine("provider-edit-status", false) + `<div id="providers"></div></section>
+<section id="providers-section" data-runtime-echo class="oa-group"><h2>Services</h2><p class="oa-caption">Programs that provide services on this computer.</p>` + oaStatus("registry-status") + oaStatusLine("providers-status", false) + oaStatusLine("provider-edit-status", false) + `<div id="providers"></div></section>
 <section id="remote-section" data-runtime-echo class="oa-group"><h2>Other PCs' providers</h2><p class="oa-caption">Model servers other trusted PCs share.</p>` + oaStatusLine("remote-status", false) +
 	`<div id="remote"></div></section>
 <script>
@@ -85,7 +85,7 @@ function providersTable(decls,revision,titles){
  const wrap=document.createElement('div');
  for(const p of decls){
   const d=p.Declaration;let b=null;
-  if(p.Role==='provider'){b=document.createElement('button');b.type='button';b.textContent=p.DeclaredBy==='installation'||p.DeclaredBy==='product'?'Disable':'Withdraw';b.onclick=()=>withdrawProvider(d.Name,revision)}
+  if(p.Role==='provider'){b=document.createElement('button');b.type='button';b.textContent=providerVerb(p);b.onclick=()=>withdrawProvider(d.Name,revision,providerVerb(p))}
   const title=[d.Name,list(d.Contracts),d.Program,p.Why].filter(Boolean).join(' · ');
   wrap.append(listRow((titles&&titles[d.Name])||d.Name,title,provides(p)+' · '+readinessPlain(p.Readiness,p.Why),b));
  }
@@ -107,12 +107,20 @@ function providerRefusal(outcome,reason){
 // outcome and reason, or the HTTP status and body, with the provider name.
 async function editProvider(payload){show('provider-edit-status','Saving registration…');const what=payload.edit+' '+payload.name;let result;
  try{const r=await fetch('/registry/providers',{method:'POST',headers:{'X-Panel-Key':key,'Content-Type':'application/json'},body:JSON.stringify(payload)});const body=await r.text();if(!r.ok)throw Error('HTTP '+r.status+(body.trim()?': '+body.trim():' with no message')+' ('+what+')');result=JSON.parse(body)}
- catch(e){const text=String(e&&e.message||e||'no response');const p=oaPlain(text);if(oaRuntimeDownText(text))oaShowError('provider-edit-status',text);else showDenial('provider-edit-status','The provider was not changed. '+p.line,text.includes(what)?text:text+' ('+what+')');await read();return}
+ catch(e){const text=String(e&&e.message||e||'no response');const p=oaPlain(text);if(oaRuntimeDownText(text))oaShowError('provider-edit-status',text);else showDenial('provider-edit-status',"The service wasn't changed. "+p.line,text.includes(what)?text:text+' ('+what+')');await read();return}
  const outcome=String(result&&result.Outcome||'');
- if(outcome==='applied')show('provider-edit-status',result.Reason==='disabled'?'Provider turned off.':'Provider removed.');
- else showDenial('provider-edit-status','The provider was not changed. '+providerRefusal(outcome,result&&result.Reason),'outcome: '+(outcome||'none')+(result&&result.Reason?'\nreason: '+result.Reason:'')+'\nprovider: '+payload.name+(result&&result.Revision?'\nrevision: '+result.Revision:''));
+ if(outcome==='applied')show('provider-edit-status',result.Reason==='disabled'?'Service turned off.':'Service removed.');
+ else showDenial('provider-edit-status',"The service wasn't changed. "+providerRefusal(outcome,result&&result.Reason),'outcome: '+(outcome||'none')+(result&&result.Reason?'\nreason: '+result.Reason:'')+'\nprovider: '+payload.name+(result&&result.Revision?'\nrevision: '+result.Revision:''));
  await read()}
-function withdrawProvider(name,revision){if(!confirm('Withdraw or disable provider '+name+'? A running provider process will be stopped by the Registry.'))return;editProvider({edit:'withdraw',revision,name})}
+// providerVerb is the button word for a registration: a product's own
+// provider turns off, an app's registration is removed.
+function providerVerb(p){return p.DeclaredBy==='installation'||p.DeclaredBy==='product'?'Turn off':'Remove'}
+// providerArmed is the provider whose button was selected once. The first
+// select writes what a second select does; the second select changes it.
+// The name outlives a redraw of the table, which rebuilds its buttons.
+// It lapses after five seconds, so a later single select only asks again.
+let providerArmed='',providerArmedAt=0;
+function withdrawProvider(name,revision,verb){if(providerArmed!==name||Date.now()-providerArmedAt>5000){providerArmed=name;providerArmedAt=Date.now();show('provider-edit-status','Select '+verb+' again to '+(verb==='Turn off'?'stop ':'remove ')+name+'.');return}providerArmed='';editProvider({edit:'withdraw',revision,name})}
 // showDenial writes one plain sentence naming which tables a single "Show"
 // click could not read, with each table's raw reason kept behind the same
 // disclosure oaShowError uses, rather than three separately worded denials
@@ -139,7 +147,7 @@ async function read(){
  for(const t of ['providers','remote'])el(t).replaceChildren();
  const sections=[
   {label:'Providers',statusId:'providers-status',failed:!!(v.providers_error||v.providers.Outcome!=='page'),text:v.providers_error||v.providers.Outcome,
-   render:()=>{show('providers-status',v.providers.Declarations.length?'':'No providers registered.');if(v.providers.Declarations.length)el('providers').append(providersTable(v.providers.Declarations,v.providers.Revision,v.titles))}},
+   render:()=>{show('providers-status',v.providers.Declarations.length?'':'No services yet.');if(v.providers.Declarations.length)el('providers').append(providersTable(v.providers.Declarations,v.providers.Revision,v.titles))}},
   {label:"Other PCs' providers",statusId:'remote-status',failed:!!(v.paired&&v.remote_error),text:v.remote_error,
    render:()=>{show('remote-status','');for(const h of v.remote)el('remote').append(listRow(h.Host,h.Why||'',[h.Domain,h.Hosted?'hosted: '+h.Wire:'local',list(h.Profiles),oaHostState(h.Up)].filter(Boolean).join(' · ')))}},
  ];

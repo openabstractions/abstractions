@@ -23,7 +23,7 @@ var workPage = oaPageHead("work", "Activity", "What happened, and who allowed it
 		`<p class="oa-empty" id="timeline-empty" hidden></p>`,
 		oaTable("timeline-table", "Time", "App", "What happened", "Outcome"),
 		`<div class="oa-toolbar"><button id="timeline-more" type="button" data-status="timeline-status" hidden>Show more</button></div>`)) +
-	runtimeGroup(oaGroup("model-requests", "Model requests", "Uses the filters above. Missing computer history reads Not recorded.",
+	runtimeGroup(oaGroup("model-requests", "Model requests", "Model calls from your apps.",
 		oaRow("Filter requests", "", `<select id="request-machine" aria-label="Computer"><option value="">All computers</option></select><select id="request-model" aria-label="Model"><option value="">All models</option></select><select id="request-outcome" aria-label="Outcome"><option value="">All results</option></select>`, "request-filter-status"),
 		libraryReadingStatus("request-status", "Reading model requests…"), `<p class="oa-empty" id="request-empty" hidden></p>`,
 		oaTable("request-table", "Time", "App", "Computer", "Model server", "Model", "Preferred model", "Selection", "Outcome"),

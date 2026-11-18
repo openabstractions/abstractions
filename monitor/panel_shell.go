@@ -178,7 +178,7 @@ var panelNavItems = []panelNavItem{
 	{ID: "rights", Label: "Permissions", Path: "/rights", Group: "main", Icon: iconRights, Segoe: "EA18", SF: "hand.raised"},
 	{ID: "setup", Label: "Catalog", Path: "/setup", Group: "main", Icon: iconSetup, Segoe: "E7C1", SF: "sparkles"},
 	{ID: "inference", Label: "Models", Path: "/inference", Group: "more", Icon: iconInference, Segoe: "E99A", SF: "brain"},
-	{ID: "registry", Label: "Providers", Path: "/registry", Group: "more", Icon: iconRegistry, Segoe: "E753", SF: "server.rack"},
+	{ID: "registry", Label: "Services", Path: "/registry", Group: "more", Icon: iconRegistry, Segoe: "E753", SF: "server.rack"},
 	{ID: "machines", Label: "Paired PCs", Path: "/machines", Group: "more", Icon: iconMachines, Segoe: "E977", SF: "desktopcomputer"},
 	{ID: "credentials", Label: "Credentials", Path: "/credentials-page", Group: "more", Icon: iconCredentials, Segoe: "E8D7", SF: "key"},
 	{ID: "settings", Label: "Settings", Path: "/settings", Group: "more", Icon: iconSettings, Segoe: "E713", SF: "gearshape"},
@@ -1299,7 +1299,7 @@ function oaPlain(text){
  }else if(lower.indexOf('invalid')!==-1){
   line='OpenAbstractions rejected this request.';
  }else{
-  line="This didn't work.";
+  line="This didn't work. Try again.";
  }
  return{line:line,details:t};
 }

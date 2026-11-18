@@ -70,8 +70,6 @@ type servicePanel struct {
 	setupCancels      map[string]context.CancelFunc
 	setupOutcomes     map[string]setupOutcome
 	setupStepSeq      int
-	maintenanceReview func(context.Context) setup.MaintenanceReview
-	maintenanceOpen   func(context.Context, string) error
 	modelController   setupModelController
 	codingController  *setup.ModelController
 	engineControllers map[setup.AppID]setupModelController
@@ -377,7 +375,6 @@ func (p *servicePanel) routes(key string) *http.ServeMux {
 		mux.HandleFunc(alias, redirectAlias(target))
 	}
 	mux.HandleFunc("/setup/plan", guard(key, p.setupPlan))
-	mux.HandleFunc("/setup/maintenance", guard(key, p.setupMaintenance))
 	mux.HandleFunc("/setup/desktop-integration", guard(key, p.setupApplyDesktopIntegration))
 	mux.HandleFunc("/setup/other-copies", guard(key, p.setupOtherCopies))
 	mux.HandleFunc("/setup/install", guard(key, func(w http.ResponseWriter, r *http.Request) {

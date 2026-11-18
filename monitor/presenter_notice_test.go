@@ -19,8 +19,12 @@ func TestSetupThatDidNotFinishIsOneNoticeWithOpenSetup(t *testing.T) {
 	if report.OpenQuestions || report.Notice == nil {
 		t.Fatalf("report %+v", report)
 	}
-	if n := *report.Notice; n.Title != "Catalog didn't finish" || n.Body != "DeepSeek refused the key." || n.Action != noticeOpenSetup {
+	if n := *report.Notice; n.Title != "Couldn't connect" || n.Body != "DeepSeek refused the key." || n.Action != noticeOpenSetup {
 		t.Fatalf("notice %+v", n)
+	}
+	named := presenterResultReport(presentResult{Outcome: presentUnavailable, Err: errProviderStore, Provider: "DeepSeek"})
+	if named.Notice == nil || named.Notice.Title != "DeepSeek not connected" || named.Notice.Body != "Couldn't save the key. Try again." {
+		t.Fatalf("named provider notice %+v", named.Notice)
 	}
 	if removed := presenterResultReport(presentResult{Outcome: presentUnavailable, Err: errProviderPermissionRemoved}); removed.Notice != nil || removed.OpenQuestions {
 		t.Fatalf("a removed permission raised %+v", removed)
@@ -40,7 +44,7 @@ func TestSetupThatDidNotFinishIsOneNoticeWithOpenSetup(t *testing.T) {
 
 // The notice carries its one action, and the action opens Setup.
 func TestPresenterNoticeOpensSetup(t *testing.T) {
-	q := presenterNoticeRequest(presenterNotice{Title: "Catalog didn't finish", Body: "The key was refused.", Action: noticeOpenSetup}, time.Now())
+	q := presenterNoticeRequest(presenterNotice{Title: "DeepSeek not connected", Body: "The key was refused.", Action: noticeOpenSetup}, time.Now())
 	if !asks.ValidNotificationRequest(q) || !strings.HasPrefix(q.RequestRef.Key, presenterNoticePrefix) || len(q.Actions) != 1 ||
 		q.Actions[0].ID != noticeOpenSetup || q.Actions[0].Title != "Open Catalog" || q.Actions[0].Activation != askclient.NotificationActivationApp {
 		t.Fatalf("request %+v", q)

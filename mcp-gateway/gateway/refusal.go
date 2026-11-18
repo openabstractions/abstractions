@@ -75,13 +75,13 @@ func refusalSentence(ctx context.Context, reason, model, profile string) string 
 	case word == "program:changed":
 		return fmt.Sprintf("%s is set up. The program that runs it was updated and waits for the person's OK in the OpenAbstractions question. It starts once they allow it.", name)
 	case word == "router:unservable":
-		return fmt.Sprintf("%s is on this computer, and no engine here can run it. OpenAbstractions Setup sets up one that can.", name)
+		return fmt.Sprintf("%s is on this computer, and no engine here can run it. Set one up from the Catalog in OpenAbstractions Panel.", name)
 	case word == "router:unauthorised":
 		return fmt.Sprintf("%s runs only on a server this app may not use. The person can allow it in OpenAbstractions.", name)
 	case word == "router:unparseable":
 		return fmt.Sprintf("%q names no model. oa_models_list names the models on this computer.", model)
 	case strings.HasPrefix(word, "engine:unverified"):
-		return fmt.Sprintf("The engine for %s isn't checked on this computer yet. OpenAbstractions Setup checks it.", name)
+		return fmt.Sprintf("The engine for %s isn't checked on this computer yet. Check it from the Catalog in OpenAbstractions Panel.", name)
 	case word == "placement:remote":
 		return fmt.Sprintf("%s must run on this computer, and only a paired computer was reachable for it.", name)
 	}
@@ -98,9 +98,9 @@ func startFailedSentence(reason string) string {
 		return ""
 	}
 	if title, ok := product.EngineTitle(name); ok {
-		return fmt.Sprintf("%s isn't set up on this computer. OpenAbstractions Setup sets it up.", title)
+		return fmt.Sprintf("%s isn't set up on this computer. Set it up from the Catalog in OpenAbstractions Panel.", title)
 	}
-	return fmt.Sprintf("The provider %s can't start on this computer. Its log in OpenAbstractions says why.", name)
+	return fmt.Sprintf("The %s service can't start on this computer. OpenAbstractions Panel shows why under Activity.", name)
 }
 
 // notSetUpSentence names a model nothing here serves: a reviewed set Setup
@@ -113,9 +113,9 @@ func notSetUpSentence(ctx context.Context, model, profile string) string {
 	switch {
 	case known:
 		use = offer.use
-		sentence = fmt.Sprintf("%s isn't set up on this computer. It can be set up with OpenAbstractions Setup (%s).", offer.title, aboutGB(offer.download))
+		sentence = fmt.Sprintf("%s isn't set up on this computer. Set it up from the Catalog in OpenAbstractions Panel (%s download).", offer.title, aboutGB(offer.download))
 	case model == "":
-		sentence = fmt.Sprintf("Nothing on this computer makes %s yet. OpenAbstractions Setup sets it up.", profileKind(profile))
+		sentence = fmt.Sprintf("Nothing on this computer makes %s yet. Set it up from the Catalog in OpenAbstractions Panel.", profileKind(profile))
 	default:
 		sentence = fmt.Sprintf("%s isn't set up on this computer for %s. oa_models_list names the models here and the ones Setup can set up.", model, profileKind(profile))
 	}

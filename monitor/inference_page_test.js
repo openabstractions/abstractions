@@ -734,17 +734,17 @@ async function modelsPage() {
  const inherited=load();await settle();
  const inheritedRow=inherited.element('selection-apps').children[0],defaultRow=inherited.element('selection-defaults').children[0];
  assert.strictEqual(inheritedRow.parts.select.value,'','inheritance keeps the raw program policy absent');
- assert(inheritedRow.parts.select.children[0].textContent.startsWith('Use account default'));
- assert(inheritedRow.parts.caption.textContent.includes('Follows the account default'));
+ assert(inheritedRow.parts.select.children[0].textContent.startsWith('Default — '));
+ assert(inheritedRow.parts.caption.textContent.includes('Uses the default for '));
  assert.strictEqual(defaultRow.parts.select.value,'qwen3.6-demo');
  inheritedRow.parts.select.value='reported';await inheritedRow.parts.select.onchange();await settle();
  assert.strictEqual(policies.get('account|oa-chat-default').rev,'account-r1','app override never edits account default');
- assert.strictEqual(inheritedRow.parts.caption.textContent,'App override');
+ assert.strictEqual(inheritedRow.parts.caption.textContent,'Custom');
  const overrideRevision=policies.get('C:\\Apps\\chat.exe|oa-chat-default').rev;
  inheritedRow.parts.select.value='';await inheritedRow.parts.select.onchange();await settle();
  assert(!policies.has('C:\\Apps\\chat.exe|oa-chat-default'));
  assert.strictEqual(calls.filter(c=>c.body&&c.body.edit==='delete'&&!c.body.account_default).at(-1).body.revision,overrideRevision);
- assert(inheritedRow.parts.select.children[0].textContent.startsWith('Use account default'),'deletion reveals the default');
+ assert(inheritedRow.parts.select.children[0].textContent.startsWith('Default — '),'deletion reveals the default');
  assert(inherited.element(inheritedRow.parts.status.id).textContent.includes('now follows the account default'));
  defaultRow.parts.select.value='maximum.gguf';await defaultRow.parts.select.onchange();await settle();
  const defaultPut=calls.filter(c=>c.body&&c.body.account_default&&c.body.edit==='put').at(-1).body;
@@ -758,7 +758,7 @@ async function modelsPage() {
  policies.set('C:\\Apps\\chat.exe|oa-chat-default',{rev:'explicit',candidates:[{Model:'qwen/tiny',Placement:'local'}]});
  const override=load({defaultReadOutcome:'forbidden'});await settle();
  assert(!override.element('selection-apps').children[0].parts.select.disabled,'proven app override remains readable despite refused account default');
- assert.strictEqual(override.element('selection-apps').children[0].parts.caption.textContent,'App override');
+ assert.strictEqual(override.element('selection-apps').children[0].parts.caption.textContent,'Custom');
  rules(inherited);rules(uncertain);rules(override);
  // The catalogue supplies custom uses, preserves selection across refreshes,
  // and discards stale choices on failure instead of substituting seed options.
@@ -811,10 +811,10 @@ async function modelsPage() {
   // and each app that follows it name Setup's model, never "none".
   const setupDefault = afterSetup.element('selection-defaults').children[0];
   assert.strictEqual(setupDefault.parts.select.value, '', 'no account default of its own is stored');
-  assert.strictEqual(setupDefault.parts.select.children[0].textContent, 'Setup’s model — Qwen3.6 demo');
-  assert.strictEqual(setupDefault.parts.caption.textContent, 'Setup chose this model. Choose another to change it.');
+  assert.strictEqual(setupDefault.parts.select.children[0].textContent, 'Recommended — Qwen3.6 demo');
+  assert.strictEqual(setupDefault.parts.caption.textContent, 'Recommended for this computer.');
   const followingApp = afterSetup.element('selection-apps').children[0];
-  assert.strictEqual(followingApp.parts.select.children[0].textContent, 'Use Setup’s model — Qwen3.6 demo');
+  assert.strictEqual(followingApp.parts.select.children[0].textContent, 'Recommended — Qwen3.6 demo');
   assert.strictEqual(followingApp.parts.caption.textContent, 'Follows the chat model Setup chose.');
   rules(afterSetup);
   assert.deepStrictEqual(calls.filter(c => c.body && c.body.edit === 'effective').map(c => c.body).slice(-2).sort((a, b) => a.name < b.name ? -1 : 1), [{edit: 'effective', name: 'oa-chat-default'}, {edit: 'effective', name: 'oa-image-default'}]);
@@ -846,7 +846,7 @@ async function modelsPage() {
   await remove.onclick();
   assert.strictEqual(hosted.parts.status.textContent, 'Confirm to remove Qwen3.6 demo from OpenAbstractions; its file stays where it is.');
   await remove.onclick(); await settle();
-  assert.strictEqual(hosted.parts.status.textContent, "This didn't work.");
+  assert.strictEqual(hosted.parts.status.textContent, "This didn't work. Try again.");
   assert.strictEqual(remove.textContent, 'Remove');
   // A busy 409 shows the page's another-step sentence and no JSON.
   unhostReply = () => ({ok: false, status: 409, text: async () => JSON.stringify({busy: {step: 'install'}})});

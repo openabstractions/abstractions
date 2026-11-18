@@ -16,7 +16,6 @@ const h = require('./testdata/setup_page_test_helper.js');
     if (path === '/setup/modelhost/chat') return {available: true, feature: {installed: true}, engine: {staged: true}, pin: {}};
     if (path === '/setup/install') return {current_catalog: true, approved: false, install: {}};
     if (path === '/setup/plan') return h.planFor(body, ['pytorch-engine', 'thenoise-engine']);
-    if (path === '/setup/maintenance') return body ? {} : {available: true, plan_id: 'historical'};
     if (path.startsWith(integration)) {
       const action = path.slice(integration.length);
       outcome = {step_id: 'step-exact', kind: action};
@@ -47,12 +46,11 @@ const h = require('./testdata/setup_page_test_helper.js');
   await p.context.setupReload();
   assert.strictEqual(button.hidden, true);
   assert.match(p.parts('opencode').line, /existing OpenCode Desktop/);
-  const record = {plan_id: 'stopped-plan', opencode: true};
-  p.context.setupBeginWork({adds: [], updates: [], removals: []}, record);
-  await assert.rejects(p.context.setupInstallStep('opencode', {}, {}, 0), /stopped install did not include/);
-  assert.strictEqual(await p.context.setupInstallStep('opencode', record, {}, 0), 'done');
-  assert.deepStrictEqual(p.posts('/setup/maintenance').map(r => r.body), [{plan_id: 'historical', confirm: true}]);
-  p.context.setupEndWork();
+  // A saved install from an earlier release that ticked OpenCode runs no
+  // installer step: its steps start at the coding model.
+  const record = {plan_id: 'stopped-plan', opencode: true, coding_model_plan_id: 'coding-plan'};
+  assert.deepStrictEqual([...p.context.setupInstallSteps(record, {selected: []})], ['coding']);
+  assert.strictEqual(p.requests.some(r => r.path === '/setup/maintenance'), false);
 
   // Change the published identity. The legacy choice remains in the
   // Catalog, and the new integrated choice is advertised as available.

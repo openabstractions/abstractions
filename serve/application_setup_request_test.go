@@ -205,7 +205,7 @@ func TestRequestSetupCheckAnswersFromFitAndTheChatDefault(t *testing.T) {
 		t.Fatal("a pick that needs a download answered without the person")
 	}
 	entries[1].Availability = modelwire.AvailabilityServed
-	if outcome, reason, ok := check(ctx, setupTestAccount, "code"); !ok || outcome != applications.SetupOutcomeAlreadySetUp || reason != "Qwen3.6 35B answers apps on this computer." {
+	if outcome, reason, ok := check(ctx, setupTestAccount, "code"); !ok || outcome != applications.SetupOutcomeAlreadySetUp || reason != "Apps use Qwen3.6 35B on this computer." {
 		t.Fatalf("served and selected = %v %q %v", outcome, reason, ok)
 	}
 	selected.Policy.Candidates[0].Model = "another"

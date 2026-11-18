@@ -21,13 +21,13 @@ func TestJobReasonSentenceForStandby(t *testing.T) {
 // or the provider by its name when OpenAbstractions does not ship it (R34
 // live test, D1).
 func TestJobReasonSentenceForAStoppedProvider(t *testing.T) {
-	if got, want := jobReasonSentence("host:start_failed:lemonade-image"), "Lemonade isn't set up on this computer. OpenAbstractions Setup sets it up."; got != want {
+	if got, want := jobReasonSentence("host:start_failed:lemonade-image"), "Lemonade isn't set up on this computer. Set it up from the Catalog in OpenAbstractions Panel."; got != want {
 		t.Fatalf("Lemonade: %q", got)
 	}
-	if got, want := jobReasonSentence("start_failed:someone-image"), "The provider someone-image can't start on this computer. Its log in OpenAbstractions says why."; got != want {
+	if got, want := jobReasonSentence("start_failed:someone-image"), "The someone-image service can't start on this computer. OpenAbstractions Panel shows why under Activity."; got != want {
 		t.Fatalf("other provider: %q", got)
 	}
-	if got := pictureFailure("auto", "host:start_failed:lemonade-image"); got.Outcome != "failed" || got.Message != "Lemonade isn't set up on this computer. OpenAbstractions Setup sets it up." {
+	if got := pictureFailure("auto", "host:start_failed:lemonade-image"); got.Outcome != "failed" || got.Message != "Lemonade isn't set up on this computer. Set it up from the Catalog in OpenAbstractions Panel." {
 		t.Fatalf("picture failure %+v", got)
 	}
 }

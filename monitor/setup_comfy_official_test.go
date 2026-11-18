@@ -54,7 +54,7 @@ func waitOutcome(t *testing.T, p *servicePanel, component string) setupOutcome {
 func TestSetupOverviewComfyRowFollowsDiscovery(t *testing.T) {
 	stubOverviewMachine(t)
 	journal := setup.Journal{Path: filepath.Join(t.TempDir(), "plan.json")}
-	p := &servicePanel{setupJournal: &journal, maintenanceReview: func(context.Context) setup.MaintenanceReview { return setup.MaintenanceReview{} }}
+	p := &servicePanel{setupJournal: &journal}
 	stubOfficialComfy(t)
 	picture := readOverview(t, p).PictureApplication
 	if picture.State != "get" || picture.DownloadPage != "https://www.comfy.org/download" || picture.OABuild {
@@ -67,7 +67,7 @@ func TestSetupOverviewComfyRowFollowsDiscovery(t *testing.T) {
 		t.Fatalf("picture card and Connect target diverged: %+v, %+v", picture, target)
 	}
 	if picture.Retained.ID != "comfyui-oa" || picture.Retained.Component != "comfyui-app" || picture.ConnectStep != "comfyui-connect" ||
-		picture.Retained.Title != "ComfyUI (OA build)" || picture.Retained.RemovalTitle != "the OA build of ComfyUI" {
+		picture.Retained.Title != "ComfyUI (previous version)" || picture.Retained.RemovalTitle != "previous version" {
 		t.Fatalf("retained row or step identity changed: %+v", picture)
 	}
 	registered := map[string]bool{}
@@ -144,7 +144,7 @@ func TestSetupOverviewNamesTheOABuild(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "plan.json")
 	writeOABuildJournal(t, path, false)
 	journal := setup.Journal{Path: path}
-	p := &servicePanel{setupJournal: &journal, maintenanceReview: func(context.Context) setup.MaintenanceReview { return setup.MaintenanceReview{} }}
+	p := &servicePanel{setupJournal: &journal}
 	if got := readOverview(t, p).PictureApplication.setupPackageCardFacts; !got.OABuild || got.OABuildRemoving {
 		t.Fatalf("OA build: %+v", got)
 	}

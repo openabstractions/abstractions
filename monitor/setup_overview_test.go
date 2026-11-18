@@ -43,16 +43,11 @@ func readOverview(t *testing.T, p *servicePanel) setupOverview {
 	return overview
 }
 
-// The overview offers only pinned rows. The OpenCode row never discovers
-// the OpenAbstractions installer when its per-user package is unavailable.
+// The overview offers only pinned rows and reads OpenCode's facts.
 func TestSetupOverviewOffersPinnedRowsAndOpenCodeFacts(t *testing.T) {
 	stubOverviewMachine(t)
 	journal := setup.Journal{Path: filepath.Join(t.TempDir(), "plan.json")}
-	reviews := 0
-	p := &servicePanel{setupJournal: &journal, maintenanceReview: func(context.Context) setup.MaintenanceReview {
-		reviews++
-		return setup.MaintenanceReview{Available: true}
-	}}
+	p := &servicePanel{setupJournal: &journal}
 	overview := readOverview(t, p)
 	picture := overview.PictureApplication
 	spec, ok := product.PackageDeclaration(string(setup.ComfyUI))
@@ -62,15 +57,15 @@ func TestSetupOverviewOffersPinnedRowsAndOpenCodeFacts(t *testing.T) {
 	if slices.Contains(overview.Offered, setup.OpenCode) {
 		t.Fatalf("a row this release does not pin is offered: %v", overview.Offered)
 	}
-	if overview.Version == "" || overview.DesktopIntegration.App != setup.OpenCode || !overview.DesktopIntegration.Coding || overview.DesktopIntegration.Installed || overview.DesktopIntegration.Action != "" || reviews != 0 {
-		t.Fatalf("version or OpenCode facts: %+v reviews=%d", overview, reviews)
+	if overview.Version == "" || overview.DesktopIntegration.App != setup.OpenCode || !overview.DesktopIntegration.Coding || overview.DesktopIntegration.Installed || overview.DesktopIntegration.Action != "" {
+		t.Fatalf("version or OpenCode facts: %+v", overview)
 	}
 	if overview.CodingModel.Title != "Qwen3.6 35B" || overview.CodingModel.Installed || len(overview.CodingModel.UsedBy) != 0 {
 		t.Fatalf("coding model facts: %+v", overview.CodingModel)
 	}
 	desktopProgramPresent = func(setup.AppID) bool { return true }
-	if overview = readOverview(t, p); !overview.DesktopIntegration.Installed || overview.DesktopIntegration.Action != "" || reviews != 0 {
-		t.Fatalf("an installed OpenCode still reads the installer: %+v reviews=%d", overview.DesktopIntegration, reviews)
+	if overview = readOverview(t, p); !overview.DesktopIntegration.Installed || overview.DesktopIntegration.Action != "" {
+		t.Fatalf("an installed OpenCode reads no action: %+v", overview.DesktopIntegration)
 	}
 }
 
@@ -79,7 +74,7 @@ func TestSetupOverviewOffersPinnedRowsAndOpenCodeFacts(t *testing.T) {
 func TestSetupOverviewCodingModelFollowsTheSetupStep(t *testing.T) {
 	stubOverviewMachine(t)
 	journal := setup.Journal{Path: filepath.Join(t.TempDir(), "plan.json")}
-	p := &servicePanel{setupJournal: &journal, maintenanceReview: func(context.Context) setup.MaintenanceReview { return setup.MaintenanceReview{} }}
+	p := &servicePanel{setupJournal: &journal}
 	var step setup.StepState
 	if err := json.Unmarshal([]byte(`{"phase":"ready","title":"Another title","family":"qwen3.6-35b-a3b","apps":["opencode"]}`), &step); err != nil {
 		t.Fatal(err)
@@ -134,7 +129,7 @@ func TestSetupEnginesAreTheUpstreamEngines(t *testing.T) {
 		}
 		return out
 	}
-	want := []string{"llama.cpp — Chat and embeddings (included)", "Diffusers — FLUX.2 Klein pictures and Hummingbird-XT video on AMD graphics (package)",
+	want := []string{"llama.cpp — Chat and embeddings (included)", "Diffusers — Pictures and video on AMD graphics (package)",
 		"Lemonade — Pictures, speech and transcription (provider)", "TheNoise — Pictures on the processor (package)"}
 	if got := rows(setup.ComfyUI, setup.PyTorch, setup.TheNoise); !slices.Equal(got, want) {
 		t.Fatalf("on gfx1151:\n%s", strings.Join(got, "\n"))
@@ -165,7 +160,7 @@ func TestSetupOverviewOffersThePinnedLemonadeEngine(t *testing.T) {
 		return false, false
 	}
 	journal := setup.Journal{Path: filepath.Join(t.TempDir(), "plan.json")}
-	p := &servicePanel{setupJournal: &journal, maintenanceReview: func(context.Context) setup.MaintenanceReview { return setup.MaintenanceReview{} }}
+	p := &servicePanel{setupJournal: &journal}
 	overview := readOverview(t, p)
 	if !slices.Contains(overview.Offered, setup.Lemonade) {
 		t.Fatalf("Lemonade's pinned package is not offered: %v", overview.Offered)
@@ -188,7 +183,7 @@ func TestSetupOverviewOffersThePinnedLemonadeEngine(t *testing.T) {
 func TestSetupOverviewRefusesPostAndUnkeyedRequests(t *testing.T) {
 	stubOverviewMachine(t)
 	journal := setup.Journal{Path: filepath.Join(t.TempDir(), "plan.json")}
-	handler := (&servicePanel{setupJournal: &journal, maintenanceReview: func(context.Context) setup.MaintenanceReview { return setup.MaintenanceReview{} }}).handler("setup-test-key")
+	handler := (&servicePanel{setupJournal: &journal}).handler("setup-test-key")
 	if got := installHandlerFor(handler)("POST", "/setup/overview", "{}"); got.Code == http.StatusOK {
 		t.Fatalf("POST /setup/overview: %d %s", got.Code, got.Body.String())
 	}

@@ -74,7 +74,7 @@ func engineFeatureTitle(engine AppID) string {
 // local on every run (installer/apps/bundle-actions/actions.h), and the core
 // offers no Repair in Apps (ARPNOREPAIR).
 func adapterRestoreSentence(title string) string {
-	return "Run the latest OpenAbstractions Setup to add " + title + "."
+	return "Install the latest OpenAbstractions to add " + title + "."
 }
 
 // adapterPresence reads an always-installed adapter beside the Panel program:

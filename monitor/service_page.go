@@ -43,7 +43,7 @@ var servicePage = pageOwnsReady(oaPageHead("status", "Apps", "Apps that use Open
 	`<div class="oa-row-control"><button id="apps-health-retry">Check again</button></div>` +
 	`<p class="oa-status" id="apps-health-status" role="status" aria-live="polite" data-state="idle"></p></div></div>` +
 	oaGroup("service-check", "Your apps", "", strings.Replace(oaRowNav("Install apps", "Browse the Catalog", "/setup#setup-choices"), `<a `, `<a id="apps-setup" `, 1), runtimeEcho(oaStatus("apps-status")), `<div id="apps-desktop-reconnect" hidden><div class="oa-row"><div class="oa-row-text"><span id="apps-desktop-reconnect-title" class="oa-row-label"></span></div><div class="oa-row-control"><button id="apps-desktop-reconnect-button" type="button" data-status="apps-desktop-reconnect-status">Reconnect</button></div></div></div>`, oaStatusLine("apps-desktop-reconnect-status", false), `<div id="apps"></div>`, oaStatusLine("apps-pending-status", false)) +
-	oaGroup("apps-services", "Providers", "Programs that provide services to your apps.", runtimeEcho(oaStatus("apps-providers-status")), `<div id="apps-providers"></div>`, strings.Replace(oaRowNav("Manage providers", "", "/registry#providers-section"), `<a `, `<a id="apps-manage-providers" `, 1)) +
+	oaGroup("apps-services", "Services", "Running in the background for your apps.", runtimeEcho(oaStatus("apps-providers-status")), `<div id="apps-providers"></div>`, strings.Replace(oaRowNav("Manage services", "", "/registry#providers-section"), `<a `, `<a id="apps-manage-providers" `, 1)) +
 	oaGroup("product-connections", "Connections", "", "", appsConnectionRows()) +
 	`<script>` + serviceCommonScript + appsPageScript + `</script>`
 
@@ -194,7 +194,7 @@ function renderApps(){
  const pendingRows=waiting.map(e=>{const row=appsPendingRows.get(e.name)||appsPendingRow();appsPendingUpdate(row,e);pendingNext.set(e.name,row);return row});
  appsPendingRows=pendingNext;
  const entries=appsState.entries.filter(e=>e&&e.role==='application'&&e.name).sort((a,b)=>appsTitle(a).localeCompare(appsTitle(b))),next=new Map();
- const rows=pendingRows.concat(entries.map(e=>{const open=appsCanOpen(e),kept=appsRows.get(e.name),row=kept&&!!kept.openable===open?kept:open?appsOpenRow():appsRow();if(open){row.link.href=appsHref(e.name);row.open.hidden=appsRunning(e);row.open.setAttribute('aria-label','Open '+appsTitle(e))}else row.href=appsHref(e.name);row.label.textContent=appsTitle(e);row.caption.textContent=(e.self_registered?'Open to confirm or remove · ':'')+(appsRunning(e)?'Running':'Registered');next.set(e.name,row);return row}));
+ const rows=pendingRows.concat(entries.map(e=>{const open=appsCanOpen(e),kept=appsRows.get(e.name),row=kept&&!!kept.openable===open?kept:open?appsOpenRow():appsRow();if(open){row.link.href=appsHref(e.name);row.open.hidden=appsRunning(e);row.open.setAttribute('aria-label','Open '+appsTitle(e))}else row.href=appsHref(e.name);row.label.textContent=appsTitle(e);row.caption.textContent=(e.self_registered?'Review needed · ':'')+(appsRunning(e)?'Running':'Not running');next.set(e.name,row);return row}));
  appsRows=next;
  if(rows.length&&rows.length===out.children.length&&rows.every((row,i)=>out.children[i]===row))return;
  out.replaceChildren();
@@ -212,7 +212,7 @@ function renderAppsProviders(){
  appsProviderRows=next;
  if(rows.length&&rows.length===out.children.length&&rows.every((row,i)=>out.children[i]===row))return;
  out.replaceChildren();
- if(!rows.length){const p=document.createElement('p');p.className='oa-empty';p.textContent='No providers yet.';out.append(p);return}
+ if(!rows.length){const p=document.createElement('p');p.className='oa-empty';p.textContent='No services yet.';out.append(p);return}
  for(const row of rows)out.append(row);
 }
 // The banner names the first failure: a service the runtime resolves, or

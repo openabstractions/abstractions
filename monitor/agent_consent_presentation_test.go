@@ -12,7 +12,7 @@ import (
 func reservedConsentFixtures() []askclient.RecordMetadata {
 	program := `C:\Apps\agent.exe`
 	return []askclient.RecordMetadata{
-		{ID: "agent-question", Key: asks.AgentEnrollmentKey, About: program, Text: "Keep Codex integration as your assistant? Each access permission is reviewed separately.", Options: []string{"keep", "refuse"}},
+		{ID: "agent-question", Key: asks.AgentEnrollmentKey, About: program, Text: "Connect Codex integration?", Options: []string{"keep", "refuse"}},
 		{ID: "registered-question", Key: asks.SelfRegisteredKey, About: program, Text: program + " added itself to OpenAbstractions as Codex integration. Keep it?", Options: []string{"keep", "remove"}},
 		{ID: "command-question", Key: asks.ApplicationCommandOnceKey, About: program, Text: "Open this document? Agent requests this once. Command open. Request ABC expires soon.", Options: []string{"once", "refuse"}},
 		{ID: "system-question", Key: asks.SystemSecurityLogKey, About: "ABC", Text: "Agent wants to read one page of the Windows Security log. Windows asks for administrator approval next.", Options: []string{"once", "refuse"}},
@@ -70,5 +70,22 @@ func TestReservedConsentsSelectExistingNativePresentation(t *testing.T) {
 	}
 	if strings.Contains(unverified.Permission.Publisher, "unverified claim") {
 		t.Fatal("unverified publisher text became trusted")
+	}
+}
+
+// The enrollment popup names the app as the person knows it and offers
+// Connect and Not now (owner popup rule 2026-11-10: one plain question).
+func TestAgentEnrollmentPopupAsksToConnectTheApp(t *testing.T) {
+	record := reservedConsentFixtures()[0]
+	view := trayQuestionViewForAsker(record, trayPublisher{Trusted: true, Subject: "Recorded publisher"}, nil, "")
+	if view.Instruction != "Connect Codex?" || view.Content != "" {
+		t.Fatalf("enrollment words: %q / %q", view.Instruction, view.Content)
+	}
+	labels := []string{}
+	for _, choice := range view.Choices {
+		labels = append(labels, choice.Option+"="+choice.Label)
+	}
+	if !reflect.DeepEqual(labels, []string{"keep=Connect", "refuse=Not now"}) || view.Default != "refuse" {
+		t.Fatalf("enrollment buttons: %v default %q", labels, view.Default)
 	}
 }

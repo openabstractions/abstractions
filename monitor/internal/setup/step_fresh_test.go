@@ -25,22 +25,22 @@ func TestStepStoppedBeforeTheAnswerSaysWhyAndKeepsIt(t *testing.T) {
 			s.Owners.Apps = func(context.Context) ([]StepApp, error) {
 				return nil, errors.New("resolve applications@2: unavailable")
 			}
-		}, "Catalog stopped", "OpenAbstractions could not read which apps are installed. Open Settings to try again.", stageApps},
+		}, "Couldn't finish setup", "OpenAbstractions could not read which apps are installed. Open Models and choose Set up.", stageApps},
 		{"question not shown", func(_ *stepWorld, s *SetupStep) {
 			s.Owners.Ask = func(context.Context, StepQuestion) (bool, error) {
 				return false, errors.New("TaskDialogIndirect: 0x80070057")
 			}
-		}, "OpenCode setup stopped", "The setup question could not be shown. Open Settings to try again.", stageQuestion},
+		}, "Couldn't finish setting up OpenCode", "The setup question could not be shown. Open Models and choose Set up.", stageQuestion},
 		{"pick without a reviewed plan", func(w *stepWorld, s *SetupStep) {
 			s.Owners.Fit = func(context.Context, string) (StepFit, error) {
 				pick := w.pick()
 				pick.Digest = "sha256:another"
 				return StepFit{Pick: &pick, PoolBytes: 1 << 40}, nil
 			}
-		}, "OpenCode setup stopped", "This Setup has no reviewed download for the model that fits this computer. Open Settings to try again.", stagePlan},
+		}, "Couldn't finish setting up OpenCode", "No download is available for the model that fits this computer. Open Models and choose Set up.", stagePlan},
 		{"fit unreadable", func(_ *stepWorld, s *SetupStep) {
 			s.Owners.Fit = func(context.Context, string) (StepFit, error) { return StepFit{}, errors.New("catalog@1: forbidden") }
-		}, "OpenCode setup stopped", "OpenAbstractions cannot tell now which model fits this computer. Open Settings to try again.", stageFit},
+		}, "Couldn't finish setting up OpenCode", "OpenAbstractions cannot tell now which model fits this computer. Open Models and choose Set up.", stageFit},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -60,7 +60,7 @@ func TestStepStoppedBeforeTheAnswerSaysWhyAndKeepsIt(t *testing.T) {
 			}
 			state, err := w.step().Load(context.Background())
 			if err != nil || state.Progress != stepNew || state.Stopped == nil || state.Stopped.Stage != c.stage ||
-				state.Stopped.Reason+" Open Settings to try again." != c.body || state.Stopped.Detail == "" {
+				state.Stopped.Reason+" Open Models and choose Set up." != c.body || state.Stopped.Detail == "" {
 				t.Fatalf("journal = %+v %+v, %v", state, state.Stopped, err)
 			}
 			if pending, _ := w.step().Pending(context.Background()); pending {
@@ -89,7 +89,7 @@ func TestStepStoppedBeforeTheAnswerSaysWhyAndKeepsIt(t *testing.T) {
 	if _, err := s.RunAndReport(context.Background()); err == nil {
 		t.Fatal("an unreadable journal reported success")
 	}
-	if n := w.last(); n.Body != "Setup could not read its record of this step. Open Settings to try again." || logged != 1 {
+	if n := w.last(); n.Body != "Setup progress couldn't be read. Open Models and choose Set up." || logged != 1 {
 		t.Fatalf("notice = %+v logged %d", n, logged)
 	}
 }

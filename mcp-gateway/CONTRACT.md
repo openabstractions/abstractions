@@ -204,7 +204,7 @@ key of the Asks occurrences this connection's enrolled program may answer
 (asks ASK-R14); it is empty when none is, and while the program is enrolled a
 held watch lasts at most 15 seconds. The Claude Mod and the OpenCode plugin
 wake an idle open chat once per greater key with the fixed pointer
-`OA: question to answer.`. The optional closed-vocabulary
+`OpenAbstractions: a question is waiting for your answer.`. The optional closed-vocabulary
 `health` input is an untrusted claim about this native connection's host
 observer. `health_supported: true` advertises that input before a companion uses
 it. A claim MUST NOT supply a target, body access, acknowledgment, permission,

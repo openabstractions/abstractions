@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"path/filepath"
@@ -20,8 +19,7 @@ func connectClickPanel(t *testing.T, found setup.ExtensionHost, journal *setup.J
 	stubOfficialComfy(t, found)
 	officialPicture.entryKept = production
 	return &servicePanel{setupJournal: journal, comfyApps: service,
-		appActivity:       applicationActivityLog{path: filepath.Join(t.TempDir(), "activity.json")},
-		maintenanceReview: func(context.Context) setup.MaintenanceReview { return setup.MaintenanceReview{} }}
+		appActivity:       applicationActivityLog{path: filepath.Join(t.TempDir(), "activity.json")}}
 }
 
 // Architect ruling 2026-11-11: the person's Connect click is the Keep. The

@@ -158,7 +158,7 @@ accounts can change the copy here. OpenAbstractions downloads its own."
 to ask (already set up, or no app to set up) posts no notice, and the Panel
 window opens instead. A Finish runs work only for a question answered in
 that run: earlier answered work left to do stays stopped with "Setup
-stopped when OpenAbstractions updated. Open Settings to continue.", and its
+paused while OpenAbstractions updated.", and its
 journal loses its build. Sign-in resumes approved work only for the Panel
 build that ran it (`step.json`'s `build`).
 
@@ -215,19 +215,10 @@ posts no notice about it, so a repeated failure never sends one per request.
 ## The OpenCode goal
 
 The archive catalogue's `opencode-official` component remains Pending because
-the ordinary archive journal does not run the application installer. The AI
-apps section offers **Review app setup**, confirmation, then **Open Setup**.
-This opens the verified current installed Burn bundle's interactive Modify
-page. Its existing app choices own the official OpenCode Desktop and OA
-integration MSI chain, application registration and package outcomes.
-
-The maintenance reader accepts only protected machine-owned registration of
-the existing bundle family, this release's version, its matching held signed
-Burn GUID and Setup identity, and the trusted Panel publisher. Source and
-ancestor holds cover process creation. Registry command strings are never
-executed. Only fixed `/modify` is supplied, with the existing clean Windows
-environment owner and a private temporary folder under Setup's own home.
-Opening that window leaves archive-install journals and installed state alone.
+the ordinary archive journal does not run the application installer. The
+person installs OpenCode from its maker; the AI apps row connects, repairs or
+updates its OpenAbstractions integration (`desktop_integration.go`). The Panel
+never opens the installed OpenAbstractions Setup.
 An absent or unverifiable cache explains the refusal and points to the normal
 installer download entry. `adopters/opencode/official-install.js` remains a
 separate read-only development diagnostic for the protected CLI session.

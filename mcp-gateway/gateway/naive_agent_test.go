@@ -55,7 +55,7 @@ type backendOnly struct{ Backend }
 func TestRefusedSubmitSaysPlainlyWhatIsNotSetUp(t *testing.T) {
 	oa := naiveAgentRuntime(t, "naive-refusal")
 	submit := map[string]any{"request_key": "naive-video", "profile": "video", "model": "ltx-2.5", "prompt": "a fox in snow", "hosting": "local", "duration_ms": 1000}
-	notSetUp := "LTX-2.5 isn't set up on this computer. It can be set up with OpenAbstractions Setup (about 41 GB)."
+	notSetUp := "LTX-2.5 isn't set up on this computer. Set it up from the Catalog in OpenAbstractions Panel (about 41 GB download)."
 
 	_, withSetup := connected(t, oa, "naive-opencode", "2025-11-25")
 	_, out := call[JobSubmitOutput](t, withSetup, ToolJobSubmit, submit)
@@ -77,7 +77,7 @@ func TestRefusedSubmitSaysPlainlyWhatIsNotSetUp(t *testing.T) {
 
 	picture, err := oa.Submit(withSetupTool(context.Background(), true), JobSubmitInput{RequestKey: "naive-picture", Profile: "image_batch", Model: "z-image-turbo",
 		Prompt: "a fox", Hosting: "local", Count: 1})
-	if err != nil || picture.Outcome != "invalid" || !strings.HasPrefix(picture.Message, "Z-Image-Turbo isn't set up on this computer. It can be set up with OpenAbstractions Setup (about") ||
+	if err != nil || picture.Outcome != "invalid" || !strings.HasPrefix(picture.Message, "Z-Image-Turbo isn't set up on this computer. Set it up from the Catalog in OpenAbstractions Panel (about") ||
 		!strings.Contains(picture.Message, "oa_setup_prepare with use image") {
 		t.Fatalf("picture %+v %v", picture, err)
 	}

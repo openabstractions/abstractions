@@ -143,7 +143,7 @@ func TestStepServesAppsByTheirCatalogUse(t *testing.T) {
 	if strings.Join(w.confirmed, ",") != "quill,easel" || w.selects != 1 || len(f.grants) != 1 || f.grants[0].Program != `C:\Programs\Easel\easel.exe` {
 		t.Fatalf("confirmed %v selects %d grants %+v", w.confirmed, w.selects, f.grants)
 	}
-	if n := w.last(); n.Title != "Ready. Open Quill Editor or Easel Studio." || n.Body != "Qwen3.6 35B answers Quill Editor and Easel Studio makes pictures on this computer." {
+	if n := w.last(); n.Title != "Quill Editor and Easel Studio are ready" || n.Body != "Quill Editor uses Qwen3.6 35B and Easel Studio makes pictures on this computer." {
 		t.Fatalf("last notice = %+v", n)
 	}
 	if outcome, err := f.with(w, w.step()).Run(context.Background()); err != nil || outcome != stepAlreadySetUp {
@@ -159,7 +159,7 @@ func TestStepServesAppsByTheirCatalogUse(t *testing.T) {
 	if outcome, err := f2.with(w2, w2.step()).RunAndReport(context.Background()); err != nil || outcome != stepSetUp {
 		t.Fatalf("stopped run = %q, %v", outcome, err)
 	}
-	if n := w2.last(); n.Title != "Quill Editor is ready; Easel Studio setup stopped" {
+	if n := w2.last(); n.Title != "Quill Editor is ready; couldn't finish setting up Easel Studio" {
 		t.Fatalf("stopped notice = %+v", n)
 	}
 	for _, world := range []*stepWorld{w, w2} {

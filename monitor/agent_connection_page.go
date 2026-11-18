@@ -8,10 +8,10 @@ func agentConnectionPage(agent, host, scope string, nativeReadback bool) string 
 	return pageOwnsReady(oaPageHead("status", agent, "Connect "+agent+" to OpenAbstractions.")) +
 		oaGroup("agent-connection", "Connection", "", oaRow("State", "", `<button id="agent-primary" class="oa-primary" disabled>Connect</button><button id="agent-refresh">Check again</button>`, "agent-status"), `<p id="agent-guidance" class="oa-status"></p>`) +
 		oaGroup("agent-receiving", "Receiving messages", "", oaRow("Receive messages while "+agent+" is idle", "", `<span id="agent-receive-control" hidden><input id="agent-receive" type="checkbox" class="switch" aria-label="Receive messages while `+agent+` is idle" disabled></span>`, "agent-receive-status"), `<p id="agent-receiving-guidance" class="oa-status"></p>`) +
-		oaGroup("agent-answering", "Answering for you", "Person-only permissions stay with you.",
+		oaGroup("agent-answering", "Answering for you", "Some questions always come to you.",
 			oaRow("Questions an assistant may answer", "", "", "agent-assistant-status"),
 			`<div id="agent-observe-row" hidden>`+oaRow("Answer questions while idle", "", `<span id="agent-observe-control" hidden><input id="agent-observe" type="checkbox" class="switch" aria-label="Answer questions while idle" disabled></span>`, "agent-observe-status")+`</div>`, `<p id="agent-answering-guidance" class="oa-status"></p>`) +
-		oaExpander("Details", `<div id="agent-details">`+oaRow("Applies to", scope, "", "")+`<p>Connected confirms saved setup. Live message reception is not observed by this page.</p><div id="agent-saved"></div>`+
+		oaExpander("Details", `<div id="agent-details">`+oaRow("Applies to", scope, "", "")+`<div id="agent-saved"></div>`+
 			`<div id="agent-project-row" hidden>`+oaRow("Project", "", `<button id="agent-project">Choose project…</button>`, "agent-project-status")+`</div>`+
 			`<button id="agent-open" data-status="agent-status" hidden>Open `+agent+`</button><button id="agent-reset" data-status="agent-status" hidden>Reset receiving setup</button>`+oaTechnicalDetails(`<pre id="agent-technical"></pre>`)+`</div>`) +
 		`<script>` + serviceCommonScript + `const agentHost=` + strconv.Quote(host) + `,agentName=` + strconv.Quote(agent) + `,agentNativeReadback=` + strconv.FormatBool(nativeReadback) + `;` + agentConnectionScript + `</script>`

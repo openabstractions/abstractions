@@ -4,7 +4,7 @@ package main
 // sends only a key and observed revision; the backend rereads the complete Spec.
 // While the runtime-down banner shows, the section is hidden whole
 // (data-runtime-echo): its list cannot be read then.
-const programReviewPanel = `<section id="program-review-section" data-runtime-echo class="oa-group" hidden><h2>Programs needing review</h2><p class="oa-caption">A changed program stays unavailable until its current file is reviewed.</p><p class="oa-status" id="program-review-status" role="status" aria-live="polite" data-state="idle"></p><div id="program-review-rows"></div></section>
+const programReviewPanel = `<section id="program-review-section" data-runtime-echo class="oa-group" hidden><h2>Programs needing review</h2><p class="oa-caption">Review these apps to keep using them.</p><p class="oa-status" id="program-review-status" role="status" aria-live="polite" data-state="idle"></p><div id="program-review-rows"></div></section>
 <script>(function(){
  const section=document.getElementById('program-review-section'),rows=document.getElementById('program-review-rows'),status=document.getElementById('program-review-status'),key=new URLSearchParams(location.search).get('k');
  let last='';
@@ -22,10 +22,9 @@ const programReviewPanel = `<section id="program-review-section" data-runtime-ec
   if(record.Reason||record.VerificationReason)details.append(element('p',null,record.Reason||record.VerificationReason));
   text.append(details);row.append(text);
   const mixed=(record.Spec.Applications||[]).length||(record.Spec.Remotes||[]).length;
-  if(mixed){row.append(element('span',null,'Review through its existing registration owner.'))}
-  else if(record.State!=='disabled'){
+  if(!mixed&&record.State!=='disabled'){
    const pending=record.State==='pending_approval'&&record.Verification!=='changed'&&String(record.Reason||'').startsWith('Review the open OpenAbstractions question');
-   const button=element('button',null,pending?'Native review pending':'Review current program');
+   const button=element('button',null,pending?'Waiting for your answer':'Review');
    button.disabled=pending;button.onclick=()=>review(record,button);row.append(button);
   }
   return row;

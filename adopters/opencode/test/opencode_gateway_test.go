@@ -295,7 +295,7 @@ func TestOpenCodeVendorBusyWake(t *testing.T) {
 		}
 	}
 
-	const hint = "OpenAbstractions inbox: 1 unread; 0 pending questions."
+	const hint = "OpenAbstractions: new messages: 1, questions waiting: 0."
 	var steps atomic.Int64
 	var finalValidated atomic.Bool
 	var advertisedMu sync.Mutex

@@ -36,7 +36,7 @@ func TestActivityWordsEveryCatalogueQuestionWithoutRawValues(t *testing.T) {
 		asks.SystemSecurityLogKey:      "coder.exe wants to read one page of the Windows Security log. Windows asks for administrator approval next. Request " + code + " expires 10:00.",
 		asks.TypedPermissionKey:        "Read your notes",
 		asks.ApplicationCommandOnceKey: "Read your notes? " + program + " requests this once. Command " + digest + ". Request " + code + " expires 10:00.",
-		asks.AgentEnrollmentKey:        "Keep Coder as your assistant? Each access permission is reviewed separately.",
+		asks.AgentEnrollmentKey:        "Connect Coder?",
 		asks.AgentUpdateKey:            "Update the Coder connections? Keep these updated connections as your assistants. Restart Coder to finish. Request " + code + ".",
 		asks.SetupModelsKey:            "Set up models for Coder. " + digest,
 		asks.ProgramReviewKey:          "Review updated programs? " + program + " " + digest,

@@ -711,7 +711,7 @@ func TestPictureRefusalNamesTheUnservedModelOrItsReason(t *testing.T) {
 		{"invalid", "host:router:not-here", "No picture model named starter-picture is served on this computer. Setup or Models installs one; leave model out for the person's picture model."},
 		{"invalid", "host:router:no-host", "No picture model named starter-picture is served on this computer. Setup or Models installs one; leave model out for the person's picture model."},
 		{"invalid", "host:unsupported", "OpenAbstractions did not start the picture: invalid (host:unsupported)."},
-		{"invalid", "host:start_failed:lemonade-image", "Lemonade isn't set up on this computer. OpenAbstractions Setup sets it up."},
+		{"invalid", "host:start_failed:lemonade-image", "Lemonade isn't set up on this computer. Set it up from the Catalog in OpenAbstractions Panel."},
 		{"unavailable", "rights:unavailable", "OpenAbstractions did not start the picture: unavailable."},
 	} {
 		f := newFakePictures(t)

@@ -52,7 +52,7 @@ func runtimeSetupCheck(fit func(context.Context, modelwire.CatalogUse) modelwire
 		read := chat(ctx, account)
 		if read.Outcome == iwire.SelectionReadOutcomeFound && read.Policy != nil && len(read.Policy.Candidates) > 0 &&
 			read.Policy.Candidates[0].Model == pick.Family && read.Policy.Candidates[0].Placement == iwire.CandidatePlacementLocal {
-			return applications.SetupOutcomeAlreadySetUp, pick.Title + " answers apps on this computer.", true
+			return applications.SetupOutcomeAlreadySetUp, "Apps use " + pick.Title + " on this computer.", true
 		}
 		return 0, "", false
 	}

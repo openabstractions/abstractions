@@ -31,6 +31,17 @@ func providerOccurrenceID(id string) bool {
 	return true
 }
 
+// providerLabel is the hosted provider's name a permission connects, or
+// empty when it connects none.
+func providerLabel(permission *askclient.PermissionRequest) string {
+	name, ok := providerForPermission(permission)
+	if !ok {
+		return ""
+	}
+	preset, _ := hostedcatalogue.Lookup(name)
+	return preset.Label
+}
+
 func providerCompletionRequest(record askclient.RecordMetadata, permission *askclient.PermissionRequest, publisher trayPublisher) (askclient.NotificationRequest, error) {
 	name, ok := providerForPermission(permission)
 	if !ok || !providerOccurrenceID(record.ID) || record.Key != asks.FirstUseKey || record.Option != "allow" || record.About != permission.Targets[0].Program {
@@ -43,10 +54,12 @@ func providerCompletionRequest(record askclient.RecordMetadata, permission *askc
 	preset, _ := hostedcatalogue.Lookup(name)
 	until := answered.UnixMilli() + asks.MaxChoiceReplayMilliseconds
 	key := providerConnectedPrefix + record.ID
-	// Retained native publisher evidence and the retained program path keep
-	// replay text stable across a later registry display-name edit.
-	app := programStem(permission.Targets[0].Program)
-	if publisher.Trusted && publisher.Description != "" {
+	// The app reads as the person knows it ("OpenCode can use DeepSeek."):
+	// its host application's name for a Setup connection image or its
+	// registered title, else its verified signed description, else its file
+	// stem. A replay inside the short replay window reads the same title.
+	app := questionAskerName(publisher, permission.Targets[0].Program, "")
+	if app == programStem(permission.Targets[0].Program) && publisher.Trusted && publisher.Description != "" {
 		app = programDisplayName(publisher, permission.Targets[0].Program)
 	}
 	if runes := []rune(app); len(runes) > maxProgramName {

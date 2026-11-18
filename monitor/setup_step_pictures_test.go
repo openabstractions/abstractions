@@ -378,7 +378,7 @@ func TestSetupStepAppsFollowTheCatalogUse(t *testing.T) {
 	if v.Label != "Coding model for Quill Editor and pictures for Easel Studio" || v.Model != "Qwen3.6 35B on this computer; pictures for Easel Studio stopped" {
 		t.Fatalf("view = %+v", v)
 	}
-	if n, ok := stepFailureNotice(errStepQuestionClosed, subject.All()); !ok || n.Title != "Set up Quill Editor and Easel Studio from Settings" {
+	if n, ok := stepFailureNotice(errStepQuestionClosed, subject.All()); !ok || n.Title != "Set up Quill Editor and Easel Studio from Models" {
 		t.Fatalf("lock notice = %+v", n)
 	}
 }
@@ -400,7 +400,7 @@ func TestSetupStepSettingsRowNamesPictures(t *testing.T) {
 	// retry, and the click writes its own sentence.
 	stopped := stepViewOf(setup.StepState{Progress: "ready", Title: "Qwen3.6 35B", Family: "qwen3.6-35b-a3b", Pictures: true, PicturesStopped: true}, subject, on, nil, true, nil)
 	if stopped.Model != "Qwen3.6 35B on this computer; pictures for ComfyUI stopped" || stopped.Action != "Try pictures again" || !stopped.Ready ||
-		stepClickSentence(stopped.Action, false) != "Setup tries pictures again." {
+		stepClickSentence(stopped.Action, false) != "Trying pictures again…" {
 		t.Fatalf("pictures stopped = %+v", stopped)
 	}
 	progress := stepViewOf(setup.StepState{Progress: "approved", Title: "Qwen3.6 35B", Pictures: true}, subject, on, nil, false, nil)

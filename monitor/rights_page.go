@@ -513,7 +513,7 @@ function installedEntryName(count,done=true){return 'Set up by OpenAbstractions'
 // longer shows one as visible text at all (task 2026-09-23, eighth
 // first-time visitor, finding 2). The full value now lives only on the
 // rules list heading's own title and in this section's Technical details.
-function showRightsList(revision,empty){const out=el('rights-status');out.replaceChildren();if(empty)out.append(document.createTextNode('No rules on this page; unlisted actions are not granted.'));if(rightsSelectorStatus==='unsupported')para(out,'This service provides legacy exact permission management. Typed scopes and saved typed rules are unavailable in this view.');el('rights-heading').title=revision||'';}
+function showRightsList(revision,empty){const out=el('rights-status');out.replaceChildren();if(empty)out.append(document.createTextNode('No saved permissions yet.'));if(rightsSelectorStatus==='unsupported')para(out,'This service provides legacy exact permission management. Typed scopes and saved typed rules are unavailable in this view.');el('rights-heading').title=revision||'';}
 // rightsRevisionDetails fills the list's Technical details, the Saved
 // permissions section's last disclosure, after its groups and rows.
 function rightsRevisionDetails(revision){const details=el('rights-revision'),body=el('rights-revision-body');details.hidden=!revision;body.textContent=revision?'Revision: '+revision:'';rightsBody(body);if(revision&&rightsListedJSON.length){const pre=document.createElement('pre');pre.textContent=rightsListedJSON.join('\n\n');body.append(pre)}}

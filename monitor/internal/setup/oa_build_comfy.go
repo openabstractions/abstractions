@@ -46,7 +46,7 @@ var historicalArchive = retainedNativeArchive{
 	component:    retainedArchiveComponent,
 	registration: retainedArchivePackage.Registration,
 	title:        nativeArchiveAppTitle,
-	label:        "OA build of " + nativeArchiveAppTitle,
+	label:        "previous version of " + nativeArchiveAppTitle,
 	slot:         func(state *State) **KeptPackage { return &state.RetainedArchive },
 	installPolicy: nativeArchiveInstallPolicy{
 		runtimeSite: plannedPyTorchSite,

@@ -63,7 +63,7 @@ func TestAgentUpdateOpenCodePersonConnectionKeepAdmitsCommonBatch(t *testing.T) 
 	}
 	pending := agent1478Set(t, run, name, "", true)
 	question := agent1478Question(t, run, name)
-	if !strings.HasPrefix(question.Text, "Connect OpenCode to OpenAbstractions?") {
+	if question.Text != "Connect OpenCode?" {
 		t.Fatal(question.Text)
 	}
 	answer(t, run.f, question.ID, "keep")

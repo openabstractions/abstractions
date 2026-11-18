@@ -52,7 +52,7 @@ func (d *applicationDirectory) postAgentUpdateReady(ctx context.Context, u *appl
 	for _, c := range u.Members {
 		titles = append(titles, c.Title)
 	}
-	q := askwire.NotificationRequest{RequestRef: ref, Title: "Connections updated", Body: "Connections updated. Reopen " + strings.Join(titles, " and ") + ".", Tag: ref.Key, Delivery: askwire.NotificationDeliveryNow, ExpiresMs: ref.ReplayUntilMs, Actions: []askwire.NotificationAction{}}
+	q := askwire.NotificationRequest{RequestRef: ref, Title: "Connections updated", Body: "Restart " + strings.Join(titles, " and ") + " to finish.", Tag: ref.Key, Delivery: askwire.NotificationDeliveryNow, ExpiresMs: ref.ReplayUntilMs, Actions: []askwire.NotificationAction{}}
 	if d.agentUpdateUndoAvailable(ctx, u) {
 		q.Actions = append(q.Actions, askwire.NotificationAction{ID: "undo", Title: "Undo", Activation: askwire.NotificationActivationApp})
 	}

@@ -55,7 +55,7 @@ const zimage = () => model('z-image', 'Z-Image-Turbo', 20.7 * GB, {required_appl
 const comfy = (over = {}) => ({
   id: 'comfyui', title: 'ComfyUI', state: 'get', connectable: true, open: false, oa_build: false,
   download_page: 'https://www.comfy.org/download',
-  retained: {id: 'comfyui-oa', component: 'comfyui-app', title: 'ComfyUI (OA build)', removal_title: 'the OA build of ComfyUI'},
+  retained: {id: 'comfyui-oa', component: 'comfyui-app', title: 'ComfyUI (previous version)', removal_title: 'previous version'},
   connect_step: 'comfyui-connect',
   actions: {connect: '/setup/comfy/connect', update: '/setup/comfy/connect', open: '/setup/comfy/open', folder: '/setup/comfy/folder',
     'remove-oa': '/setup/comfy/remove-oa-build'},
@@ -69,7 +69,7 @@ const overview = (over = {}) => ({version: '0.8.0', offered: ['thenoise', 'pytor
 // engines are the overview's Engines rows on a Strix Halo computer, as
 // setupEngines writes them; withLemonade adds the core's Lemonade provider.
 const engines = (lemonade = null) => [{id: 'modelhost', title: 'llama.cpp', caption: 'Chat and embeddings', kind: 'included'}, ...(lemonade ? [{id: 'lemonade', title: 'Lemonade', caption: 'Pictures, speech and transcription', kind: 'provider', ready: !!lemonade.ready}] : []),
-  {id: 'pytorch', title: 'Diffusers', caption: 'FLUX.2 Klein pictures and Hummingbird-XT video on AMD graphics', kind: 'package', can_remove: true}, {id: 'thenoise', title: 'TheNoise', caption: 'Pictures on the processor', kind: 'package', can_remove: true}];
+  {id: 'pytorch', title: 'Diffusers', caption: 'Pictures and video on AMD graphics', kind: 'package', can_remove: true}, {id: 'thenoise', title: 'TheNoise', caption: 'Pictures on the processor', kind: 'package', can_remove: true}];
 const installedRow = id => ({id, effect: {phase: 'installed'}});
 // ownerState: the owner's computer: the picture engine and TheNoise
 // installed under this release's plan, OpenCode with Qwen3.6 35B, no

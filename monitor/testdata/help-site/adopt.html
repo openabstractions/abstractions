@@ -21,23 +21,25 @@
       <p>Applications already use abstractions for files, windows, networks, and libraries. OA extends that idea to running capabilities such as downloads, model calls, logging, storage, configuration, and application tools. Choose the capability, add its client, run the OA service, and connect an available implementation.</p>
     </section>
     <p class="status-note"><a href="https://github.com/openabstractions/redist/releases/latest">Release notes</a> list available packages, included features and installation verification. For source integrations, <a href="coverage.html">Language support</a> shows which modules each language can call and the platform each call was checked on.</p>
-    <nav class="reference-nav" aria-label="On this page"><a href="#install">Install OA</a><a href="#quickstart-title">Try a capability</a><a href="#comfyui-node">ComfyUI node</a><a href="#opencode-node">OpenCode</a><a href="#mcp">Connect an assistant</a><a href="reference.html#providers">Connect a provider</a></nav>
+    <nav class="reference-nav" aria-label="On this page"><a href="#install">Install OA</a><a href="#quickstart-title">Try a capability</a><a href="#ship">Ship OA with your app</a><a href="#comfyui-node">ComfyUI node</a><a href="#opencode-node">OpenCode</a><a href="#mcp">Connect an assistant</a><a href="reference.html#providers">Connect a provider</a></nav>
 
     <h2 id="for-people">For people who use applications</h2>
     <h3 id="install">Install the shared runtime</h3>
     <p><a href="https://github.com/openabstractions/redist/releases/latest">Install the latest shared runtime</a>. The release notes list each asset's contents and package verification, including Panel availability.</p>
-    <p>Historical 0.2.0 platform evidence remains in the <a href="evidence.html#release-0-2-0">previous release record</a>.</p>
     <div class="page-grid">
-      <article class="page-card" id="install-windows"><h3>Windows</h3><p>Download the x64 or ARM64 MSI from the <a href="https://github.com/openabstractions/redist/releases/latest">latest runtime release</a>. The installer defaults to <em>Just me</em>. <em>Everyone</em> requires administrator access. Adding commands to PATH is optional. Open the installed Panel to inspect runtime readiness and permissions.</p></article>
+      <article class="page-card" id="install-windows"><h3>Windows</h3><p>For OpenAbstractions 0.8.0, download <code>OpenAbstractions-Setup-0.8.0.exe</code> from the <a href="https://github.com/openabstractions/redist/releases/latest">release assets</a>, compare it with <code>SHA256SUMS</code> and run it. Setup installs the runtime and the Panel. The Panel's Apps Catalog installs OpenCode through its official installer and adds the OpenAbstractions integration to an existing ComfyUI. The x64 and ARM64 MSIs install the core runtime directly. They default to <em>Just me</em>. <em>Everyone</em> requires administrator access. Adding commands to PATH is optional.</p></article>
       <article class="page-card" id="install-linux"><h3>Linux</h3><p>Download the amd64 or ARM64 archive from the <a href="https://github.com/openabstractions/redist/releases/latest">latest runtime release</a>, extract it and follow its <code>install.sh</code> instructions for the current user. See the release notes for installation verification and platform limits.</p></article>
-      <article class="page-card" id="install-macos"><h3>macOS</h3><p>Download the universal package from the <a href="https://github.com/openabstractions/redist/releases/latest">latest runtime release</a>. Its notes identify the signing state, tested systems and installation checks. The <a href="evidence.html#release-0-4-0">0.4.0 evidence</a> records automated installed XPC acceptance on arm64; earlier receipts retain their lifecycle scope. Older-system qualification remains open.</p></article>
+      <article class="page-card" id="install-macos"><h3>macOS</h3><p>Download the universal package from the <a href="https://github.com/openabstractions/redist/releases/latest">latest runtime release</a> when the release attaches one. Its notes identify the signing state, tested systems and installation checks.</p></article>
     </div>
-    <p>Both Windows MSIs and OpenAbstractions-Setup-0.4.0.exe are signed with SHA-256 Authenticode and an RFC 3161 SHA-256 timestamp. Linux tarballs are unsigned. The macOS package is Developer ID signed, notarised and stapled. Retained installed evidence covers Windows x64, Linux amd64 and macOS arm64; earlier lifecycle receipts keep their original release scope. Windows and Linux ARM64 packages are cross-built; ARM64 installation on those platforms and Intel Mac execution remain untested. Check the release <code>SHA256SUMS</code> before installing. See the <a href="evidence.html#release-0-4-0">0.4.0 acceptance scope</a>.</p>
-    <p class="status-note">Windows Panel: one approved native start on WebView2 runtime 153.0.4234.48 rendered the Panel and coincided with one Windows Event 4625 naming <code>msedgewebview2.exe</code> with bad-password status. The event’s initiating code path is unknown. No supported mitigation or repeated-start safety is established. Avoid repeated native starts on affected systems; runtime commands remain available.</p>
+    <p>The release notes state each asset's signing outcome and the architectures its installation was tested on. Check the downloads against the release <code>SHA256SUMS</code> before installing:</p>
+    <pre><code>sha256sum -c --ignore-missing SHA256SUMS</code></pre>
+    <p>In PowerShell, hash Setup and find its line in <code>SHA256SUMS</code>:</p>
+    <pre><code>(Get-FileHash OpenAbstractions-Setup-0.8.0.exe -Algorithm SHA256).Hash.ToLower()
+Select-String OpenAbstractions-Setup-0.8.0.exe SHA256SUMS</code></pre>
     <p>After installation, check the runtime from a terminal. If you left PATH unchanged, use the installed executable’s full path.</p>
     <pre><code>openabstractions status --json
 openabstractions probe --json</code></pre>
-    <p><code>status</code> reports readiness; <code>probe</code> checks bounded service reads. <code>status --json</code> prints each capability's readiness as one JSON document. <code>probe --json</code> prints one JSON document per probe result. An application still needs permission for its requested actions and a compatible provider. The <a href="https://github.com/openabstractions/redist#installing">installation guide</a> describes setup; the <a href="https://github.com/openabstractions/abstractions/blob/main/docs/results/release-0.2.0.md">0.2.0 upgrade report</a> records migration from 0.1.7.</p>
+    <p><code>status</code> reports readiness; <code>probe</code> checks bounded service reads. <code>status --json</code> prints each capability's readiness as one JSON document. <code>probe --json</code> prints one JSON document per probe result. An application still needs permission for its requested actions and a compatible provider. The <a href="https://github.com/openabstractions/redist#installing">installation guide</a> describes setup.</p>
     <h4 id="install-features">Installed runtime features</h4>
     <p>The Windows installer offers feature choices. Check the release notes to see which optional tools are included in each asset before configuring an assistant.</p>
     <table class="example-table">
@@ -47,13 +49,17 @@ openabstractions probe --json</code></pre>
         <tr><td>Local model stores</td><td><code>inventoryd.exe</code> and the declaration file that registers it as an <code>abstraction.storage/inventory-source@1</code> provider</td><td>On</td><td>Finds the model files your other apps already downloaded.</td></tr>
         <tr><td>MCP gateway</td><td><code>openabstractions-mcp</code>, with no runtime declaration (unlike the other features, it installs no declaration file in <code>tools\declarations\</code>, so the runtime does not know it exists or start it; an assistant launches it directly by its path, and it holds no rights until granted)</td><td>Off</td><td>Lets an AI assistant use OA's tools.</td></tr>
         <tr><td>Model host</td><td><code>modelhostd.exe</code> only; <code>openabstractions models host</code> writes its provider declaration later</td><td>Off</td><td>Serves chat and embeddings from a model file on this machine with the pinned llama.cpp build, which <code>modelhostd engine install</code> stages from the publisher's archive you download.</td></tr>
-        <tr><td>NAS downloads</td><td>Nothing; the delegator runs inside the download service already</td><td>Held, hidden, never installed</td><td>&#8212;</td></tr>
       </tbody>
     </table>
-    <p>Local model stores are on in this development feature set because they only read directory listings and write nothing. The MCP gateway and model host default to off. Selecting either installs its program but grants it no rights; the gateway has no runtime declaration, and a model-host declaration is written when an operator configures a model.</p>
+    <p>Local model stores are on by default because they only read directory listings and write nothing. The MCP gateway and model host default to off. Selecting either installs its program but grants it no rights; the gateway has no runtime declaration, and a model-host declaration is written when an operator configures a model.</p>
+    <h4 id="previous-releases">Previous releases</h4>
+    <ul class="compact-list">
+      <li>0.4.0: the <a href="evidence.html#release-0-4-0">0.4.0 record</a> covers signed Setup, Windows x64 MSI acceptance and macOS arm64 installed XPC acceptance.</li>
+      <li>0.2.0: the <a href="evidence.html#release-0-2-0">0.2.0 record</a> covers platform checks. The <a href="https://github.com/openabstractions/abstractions/blob/main/docs/results/release-0.2.0.md">0.2.0 upgrade report</a> covers migration from 0.1.7.</li>
+    </ul>
 
     <h3 id="after-installing">What changes after installing</h3>
-    <p>The runtime starts as a background service. On Windows, a Panel icon sits in the notification area at sign-in, and the Panel also opens from the Start menu. The first time an application asks for a new permission, the Panel shows the question. Install the runtime once from the links above. <a href="adopters.html">See what works with it today</a>. No application bundles the runtime yet.</p>
+    <p>The runtime starts as a background service. On Windows, a Panel icon sits in the notification area at sign-in, and the Panel also opens from the Start menu. The first time an application asks for a new permission, the Panel shows the question. On Windows, the Panel's Apps Catalog installs or repairs OpenCode and installs the OpenAbstractions integration for ComfyUI. The Device page shows storage by type, free space, the largest reported items and verified duplicates. <a href="adopters.html">See the application guide</a>.</p>
     <div class="adopt-panel-figures">
       <figure>
         <a href="images/panel/status-windows-light.png" target="_blank" rel="noopener">
@@ -87,20 +93,58 @@ openabstractions probe --json</code></pre>
 
     <h2 id="for-developers">For developers</h2>
     <section aria-labelledby="quickstart-title">
-      <h3 id="quickstart-title">Write a log. Read it back from OA.</h3>
-      <p>Start with one small application. It sends a structured event to OA, then retrieves that event from the service’s retained history. You grant history access to that application’s executable. OA keeps the record independently of the application.</p>
-      <p>The Go example includes Windows PowerShell and Linux commands for building the app, starting an isolated development runtime, and granting access. It uses a unique event ID to check that each run retrieves its own event.</p>
-      <pre><code>wrote: worker started (quickstart-…)
-read back: worker started (component=quickstart)</code></pre>
-      <p><a href="https://github.com/openabstractions/abstractions/tree/main/examples/logging-quickstart">Open the logging quickstart and source</a></p>
-      <p class="status-note">Use the example and runtime from the same release revision. The isolated write/read path has been exercised on Windows. Installed applications use discovery to verify the runtime; this example uses an explicit development endpoint.</p>
+      <h3 id="quickstart-title">Quickstart: send a log record to OA</h3>
+      <p>This quickstart runs on Windows with Go 1.26 or newer. Your program sends one structured record to the shared log service, and the Panel shows it.</p>
+      <ol class="compact-list">
+        <li>Install the runtime with <a href="#install-windows">OpenAbstractions Setup</a>.</li>
+        <li>Create a module and add the logging client:
+          <pre><code>mkdir my-app
+cd my-app
+go mod init example.com/my-app
+go get github.com/openabstractions/abstraction-logging/go@v0.8.0</code></pre></li>
+        <li>Save this as <code>main.go</code>:
+          <pre><code>package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+    "log/slog"
+    "time"
+
+    logging "github.com/openabstractions/abstraction-logging/go"
+)
+
+func main() {
+    h := logging.NewDefaultHandler(&amp;logging.Options{Program: "my-app"})
+    slog.SetDefault(slog.New(h))
+    slog.Info("worker started", "component", "indexer")
+
+    // Close drains the queued records before the program exits.
+    ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+    defer cancel()
+    counts, err := h.Close(ctx)
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Printf("sent %d record to OA\n", counts.Written)
+}</code></pre></li>
+        <li>Build and run it:
+          <pre><code>go build -o app.exe .
+.\app.exe</code></pre></li>
+        <li>It prints:
+          <pre><code>sent 1 record to OA</code></pre></li>
+        <li>Open the Panel, go to <strong>Activity</strong> and expand <strong>Detailed log</strong>. The record reads <code>my-app: worker started</code>. Once your app is a registered application, <code>openabstractions logs --app NAME</code> prints its records in a terminal, and <code>--follow</code> keeps printing new ones.</li>
+      </ol>
+      <p>Next: <a href="https://github.com/openabstractions/abstraction-inference#get-a-model-then-chat">get a model, then chat</a>.</p>
+      <p><a href="https://github.com/openabstractions/abstractions/tree/main/examples/logging-quickstart">Develop OA itself</a>: build the runtime from source, run it isolated beside the installed one and read history back.</p>
     </section>
     <h3>Choose your starting point</h3>
     <div class="page-grid">
       <article class="page-card"><h3>Add a capability to an application</h3><p>Pick downloads, inference, logging, storage, or another capability below. Add the facade client for your language and call the matching <code>Resolve*</code> method.</p><p><a href="https://github.com/openabstractions/abstraction-facade">Facade source and language setup</a></p></article>
       <article class="page-card"><h3>Use an existing engine</h3><p>Connect an existing downloader, model server, or content store through a provider or adapter. Register what it can do with OA; applications continue using the capability API.</p><p><a href="reference.html#providers">Provider boundary</a></p></article>
       <article class="page-card"><h3>Run and configure OA</h3><p>Start the runtime, choose which programs may do what, register providers and applications, save provider credentials, and inspect readiness.</p><p><a href="cases.html#operator">See the example</a></p></article>
-      <article class="page-card"><h3>Connect an assistant through MCP</h3><p>Give an assistant access to model discovery, setup requests, inference, durable inference jobs and visible application listings through OA’s development gateway.</p><p><a href="#mcp">Gateway setup and permissions</a></p></article>
+      <article class="page-card"><h3>Connect an assistant through MCP</h3><p>Give an assistant access to model discovery, setup requests, inference, durable inference jobs and visible application listings through OA’s MCP gateway.</p><p><a href="#mcp">Gateway setup and permissions</a></p></article>
     </div>
     <h3>Choose a capability</h3>
     <div class="page-grid">
@@ -128,18 +172,29 @@ sink, err := facade.Discover().ResolveLog(
     </ol>
     <h3>Choose a language client</h3>
     <p>All five languages can use the shared native connection. Go, Python and C++ include it in the default facade entry point. Rust and JavaScript use separate native connector packages; their installed-runtime paths select and verify runtime identity. The <a href="https://github.com/openabstractions/abstraction-facade">facade repository</a> gives revision-specific setup. The <a href="coverage.html">Language support</a> page records checks per module and language. Runtime packaging and release qualification remain separate from these source paths.</p>
-    <p class="status-note">JavaScript and Python packages for the resource, model bridge, model host and local-stores capabilities are not published to npm or PyPI in 0.3.0. The capability source remains available in its repository; registry artifacts have separate publication from the runtime.</p>
+    <p class="status-note">Python wheels, Rust crates and npm packages have their own source versions and publication status, separate from the runtime release. The capability source remains available in its repository.</p>
+    <h3 id="ship">Ship OA with your app</h3>
+    <p>Your Windows installer checks for the runtime and runs OpenAbstractions Setup when it is missing or older than the version your app needs.</p>
+    <p><strong>Detect the runtime.</strong> The installer records <code>version</code> and <code>ipc_library</code> under <code>Software\OpenAbstractions\Abstraction</code>, in <code>HKLM</code> for a machine install and in <code>HKCU</code> for a <em>Just me</em> install:</p>
+    <pre><code>Get-ItemProperty "HKLM:\Software\OpenAbstractions\Abstraction" | Select-Object version, ipc_library</code></pre>
+    <pre><code>version ipc_library
+------- -----------
+0.8.0   C:\Program Files\OpenAbstractions\tools\abstraction_ipc.dll</code></pre>
+    <p><strong>Check the version.</strong> Compare <code>version</code> with the lowest release your client modules need. For modules at <code>v0.8.0</code>, that is <code>0.8.0</code>. <code>openabstractions status --json</code> reports whether each capability resolves, and exits with 0 when all of them do.</p>
+    <p><strong>Run Setup.</strong> Bundle <code>OpenAbstractions-Setup-0.8.0.exe</code> or download it from the release, check its SHA-256, and run it from your installer. Setup accepts the standard WiX Burn switches: <code>/passive</code> shows progress only, <code>/quiet</code> shows no window, <code>/norestart</code> defers a restart, and <code>/log &lt;file&gt;</code> writes a log. Setup installs the runtime for the whole machine and asks for administrator approval once.</p>
+    <pre><code>OpenAbstractions-Setup-0.8.0.exe /passive /norestart /log oa-setup.log</code></pre>
+    <p><strong>When the person declines.</strong> Setup exits with a nonzero code and installs nothing. Let your app install and start anyway. Each <code>Resolve*</code> call then returns a resolution error, and your app shows its OA features as unavailable until the person runs Setup.</p>
     <h3 id="comfyui-node">ComfyUI: install the node</h3>
-    <p>The node ships as an ordinary ComfyUI custom node, described by its own <code>pyproject.toml</code>: a <code>[tool.comfy]</code> table names the Comfy Registry publisher and display name, and <code>requires-comfyui</code> names the ComfyUI version this node was run against.</p>
+    <p>On Windows, the Panel's Apps Catalog installs the OpenAbstractions integration into a ComfyUI installation from ComfyUI's official source.</p>
+    <p>The node is an ordinary ComfyUI custom node, described by its own <code>pyproject.toml</code>. Its <code>[tool.comfy]</code> table holds the Comfy Registry fields: <code>PublisherId</code>, <code>DisplayName</code> and <code>requires-comfyui</code>, the lowest ComfyUI version the node has run against. A Comfy Registry listing waits for a publisher account.</p>
     <pre><code>[tool.comfy]
 PublisherId = "openabstractions"
 DisplayName = "OpenAbstractions Downloads"
 requires-comfyui = ">=0.35.0"</code></pre>
     <p>If OA is not running, Manager keeps working as before and the node explains what is missing rather than failing silently.</p>
     <h3 id="opencode-node">OpenCode: one command</h3>
-    <p>The adapter ships its own <code>configure.js</code>. One command writes OpenCode's provider block from what this machine can actually serve.</p>
-    <pre><code>node adopters/opencode/configure.js configure</code></pre>
-    <p>It reads the router's servable chat families through the runtime and writes or updates the <code>provider.&lt;id&gt;</code> block. If no default model is set, it also selects one of those families. Other configuration keys stay untouched, and running it again with nothing changed leaves the file unchanged.</p>
+    <p>On Windows, the Panel's Apps Catalog installs or repairs OpenCode.</p>
+    <p>The integration ships <code>configure.js</code>, and the Catalog runs it for you. It reads the router's servable chat families through the runtime and writes or updates the <code>provider.&lt;id&gt;</code> block. If no default model is set, it also selects one of those families. Other configuration keys stay untouched, and running it again with nothing changed leaves the file unchanged. The installed copy is in <code>%LOCALAPPDATA%\Programs\OpenAbstractions\apps\opencode\plugin\0.8.0\</code>. The <a href="https://github.com/openabstractions/abstractions/tree/main/adopters/opencode">OpenCode adapter guide</a> lists its flags.</p>
     <h3 id="mcp">Connect an assistant through the MCP gateway</h3>
     <p><a href="applications.html">How application MCP works</a>: the developing application profile, shared state and action semantics, and current availability.</p>
     <p>The MCP gateway is a separate optional stdio program. When the selected asset includes it, an assistant launches it directly. The gateway source and guide describe its tools and permission model.</p>

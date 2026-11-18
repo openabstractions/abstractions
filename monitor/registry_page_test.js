@@ -7,11 +7,11 @@ const script = go.split('<script>')[1].split('</script>')[0];
 // inference_page_test.js.
 assert(go.includes('</script><script>` + serversScript + `</script>'), 'Providers carries the model server, gateway and key sections');
 // Owner's Panel rules (2026-10-07): one short caption per section, the
-// page caption "Where models run.", and the forms are choosers behind an
+// page caption "Model servers and background services.", and the forms are choosers behind an
 // expander (research/panel-redesign/SPEC.md §4, S8).
 {
  const markup = go.slice(go.indexOf('var registryPage = '), go.indexOf('<script>'));
- assert(markup.includes('oaPageHead("registry", "Providers", "Where models run.")'), 'the page caption');
+ assert(markup.includes('oaPageHead("registry", "Services", "Model servers and background services.")'), 'the page caption');
  assert(!markup.includes('provider-register'), 'the typed managed-provider form is gone');
  assert(!/<input(?![^>]*(\bhidden\b|type="checkbox"))/.test(markup), 'every text input waits behind Other…');
  assert(!/<p[^>]*>[^<]{120,}<\/p>/.test(markup), 'each Providers section carries one short caption');
@@ -71,7 +71,7 @@ let registrationPayload, lastView;
 // providerReply is what /registry/providers answers: a JSON change, or
 // {status, body} for a failed HTTP reply.
 let providerReply = {Outcome:'applied',Revision:'providers-v2:next'};
-const context = {URLSearchParams, document:{getElementById:element,createElement:t=>Object.assign(node(),{tagName:String(t).toUpperCase()})}, location:{search:'?k=test'}, console,confirm:()=>true,
+const context = {URLSearchParams, document:{getElementById:element,createElement:t=>Object.assign(node(),{tagName:String(t).toUpperCase()})}, location:{search:'?k=test'}, console,confirm:()=>{throw Error('the Registry page opened a confirm() dialog')},
  fetch:async(path,opts)=>{
   if(path==='/registry/providers') {assert.strictEqual(opts.method,'POST');registrationPayload=JSON.parse(opts.body);const reply=providerReply;if(reply.status)return {ok:false,status:reply.status,text:async()=>reply.body};return {ok:true,status:200,text:async()=>JSON.stringify(reply),json:async()=>reply}}
   if(path==='/registry/selection') {const payload=JSON.parse(opts.body);selectionCalls.push(payload);if(payload.edit==='read')return {ok:true,json:async()=>({read:selectionExists?{Outcome:'found',Revision:selectionRevision,Policy:{Name:payload.name,Candidates:[{Model:'qwen/tiny',Placement:'local',Credential:'',Provider:'native-runtime'}]}}:{Outcome:'unknown',Revision:'',Policy:null}})};if(payload.edit==='put'){selectionExists=true;selectionRevision='selection-v1:8';return {ok:true,json:async()=>({change:{Outcome:'applied',Revision:selectionRevision,Reason:''}})}}selectionExists=false;return {ok:true,json:async()=>({change:{Outcome:'applied',Revision:'selection-v1:9',Reason:''}})}}
@@ -190,15 +190,27 @@ async function chooserSnapshots() {
  assert.deepStrictEqual(rowText(providerRows[0]), ['local-stores', 'storage inventory source · Not started']);
  assert(providerRows[0].children[0].children[0].title.includes('abstraction.storage/inventory-source@1'), 'the contract id sits on the title, never the visible text');
  assert(providerRows[0].children[0].children[0].title.includes('program:server program mismatch'), 'the readiness reason sits on the title');
- assert.strictEqual(providerRows[0].children[1].children[0].textContent,'Withdraw','provider registration exposes a withdrawal action');
+ assert.strictEqual(providerRows[0].children[1].children[0].textContent,'Remove','provider registration exposes a removal action');
  assert.deepStrictEqual(rowText(providerRows[1]), ['lab', 'Remote runtime: inference chat, router · Ready']);
  assert.deepStrictEqual(rowText(providerRows[2]), ['ollama-engine', 'Model server (ollama) · Ready']);
  assert.strictEqual(providerRows[2].children.length, 1, 'a row with no action has no empty action cell');
  for (const r of providerRows) for (const word of ['attach', 'profile:', 'operator', 'managed process']) assert(!rowText(r).join(' ').includes(word), word + ' is not page text');
  assert.deepStrictEqual(rowText(element('remote').children[0]), ['lab/openrouter', 'lab · hosted: openai-compatible · chat · Up']);
+ // The first select writes what the second does and changes nothing.
+ providerRows[0].children[1].children[0].onclick(); await settle(); await settle();
+ assert.strictEqual(registrationPayload, undefined, 'the first select sends nothing');
+ assert.strictEqual(element('provider-edit-status').textContent,'Select Remove again to remove local-stores.');
+ // A select more than five seconds after the first only asks again.
+ {
+  const realNow = vm.runInContext('Date.now', context);
+  context.__now = () => realNow() + 6000; vm.runInContext('Date.now=__now', context);
+  providerRows[0].children[1].children[0].onclick(); await settle(); await settle();
+  assert.strictEqual(registrationPayload, undefined, 'an armed select lapses after five seconds');
+  context.__now = realNow; vm.runInContext('Date.now=__now', context);
+ }
  providerRows[0].children[1].children[0].onclick(); await settle(); await settle();
  assert.deepStrictEqual(registrationPayload,{edit:'withdraw',revision:'providers-v2:r',name:'local-stores'});
- assert.strictEqual(element('provider-edit-status').textContent,'Provider removed.');
+ assert.strictEqual(element('provider-edit-status').textContent,'Service removed.');
  // A refused withdrawal shows a plain sentence and its reason behind
  // Technical details (owner report R20c, 2026-11-10: "This didn't work."
  // over "unknown: name").
@@ -206,20 +218,20 @@ async function chooserSnapshots() {
   const details = () => { const d = element('provider-edit-status').children[0]; return d && d.className === 'oa-error-details' ? d.children[1].textContent : '' };
   providerReply = {Outcome:'unknown',Revision:'providers-v2:r',Reason:'name'};
   views.unshift(JSON.parse(JSON.stringify(views[0])));
-  providerRows[0].children[1].children[0].onclick(); await settle(); await settle();
-  assert.strictEqual(element('provider-edit-status').textContent.split('Technical details')[0], 'The provider was not changed. This provider is no longer registered.');
+  providerRows[0].children[1].children[0].onclick(); providerRows[0].children[1].children[0].onclick(); await settle(); await settle();
+  assert.strictEqual(element('provider-edit-status').textContent.split('Technical details')[0], "The service wasn't changed. This provider is no longer registered.");
   assert(!element('provider-edit-status').textContent.includes("didn't work"), 'a known refusal reads as its own sentence');
   assert(details().includes('outcome: unknown') && details().includes('reason: name') && details().includes('provider: local-stores'), 'the refusal keeps its outcome, reason and provider: ' + details());
   // A failed HTTP reply with no body still names its status and provider.
   providerReply = {status:503, body:''};
   views.unshift(JSON.parse(JSON.stringify(views[0])));
-  providerRows[0].children[1].children[0].onclick(); await settle(); await settle();
-  assert(element('provider-edit-status').textContent.startsWith('The provider was not changed.'), element('provider-edit-status').textContent);
+  providerRows[0].children[1].children[0].onclick(); providerRows[0].children[1].children[0].onclick(); await settle(); await settle();
+  assert(element('provider-edit-status').textContent.startsWith("The service wasn't changed."), element('provider-edit-status').textContent);
   assert(details().includes('HTTP 503') && details().includes('withdraw local-stores'), 'empty reply details: ' + details());
   // A failed reply with a body keeps that body.
   providerReply = {status:503, body:'registry not resolved: unavailable\n'};
   views.unshift(JSON.parse(JSON.stringify(views[0])));
-  providerRows[0].children[1].children[0].onclick(); await settle(); await settle();
+  providerRows[0].children[1].children[0].onclick(); providerRows[0].children[1].children[0].onclick(); await settle(); await settle();
   assert(details().includes('registry not resolved: unavailable'), details());
   providerReply = {Outcome:'applied',Revision:'providers-v2:next'};
  }
@@ -228,7 +240,7 @@ async function chooserSnapshots() {
  // lands as one line naming the refused table, with the raw remote text
  // kept behind a disclosure rather than shown outright.
  context.read(); await settle(); await settle();
- assert.strictEqual(element('providers-status').textContent, 'No providers registered.', 'a table that succeeded is unaffected by the others\' refusal');
+ assert.strictEqual(element('providers-status').textContent, 'No services yet.', 'a table that succeeded is unaffected by the others\' refusal');
  assert.strictEqual(element('remote-status').textContent, '');
  assert.strictEqual(element('registry-status').textContent, "Other PCs' providers could not be read. OpenAbstractions did not permit this Panel to do this; nothing was changed.");
  const denialDetails = element('registry-status').children[0];

@@ -119,6 +119,9 @@ type presentResult struct {
 	Err             error
 	// Requester is the asking app's title for a permission notice.
 	Requester string
+	// Provider is the hosted provider a failed connection names, when the
+	// question connected one.
+	Provider string
 }
 
 // defaultPresenterOperator resolves the asks operator of the local runtime.
@@ -312,10 +315,10 @@ func (p *questionPresenter) presentProviderMode(ctx context.Context, record askc
 		return *providerAnswered
 	}
 	if providerPermission != nil {
-		return presentResult{Outcome: presentUnavailable, Err: providerFailure}
+		return presentResult{Outcome: presentUnavailable, Err: providerFailure, Provider: providerLabel(details.Permission)}
 	}
 	if providerRecorded != nil && providerFailure != nil {
-		return presentResult{Outcome: presentUnavailable, Err: providerFailure}
+		return presentResult{Outcome: presentUnavailable, Err: providerFailure, Provider: providerLabel(details.Permission)}
 	}
 	if retryMode {
 		return presentResult{Outcome: presentClosed}
@@ -724,7 +727,11 @@ func presenterResultReport(result presentResult) presenterReport {
 		if errors.As(result.Err, &native) {
 			// Setup the person started didn't finish: one notification
 			// that opens Setup (row 28).
-			return presenterReport{Notice: &presenterNotice{Title: "Catalog didn't finish", Body: native.NativeCredentialMessage(), Action: noticeOpenSetup}}
+			title := "Couldn't connect"
+			if result.Provider != "" {
+				title = result.Provider + " not connected"
+			}
+			return presenterReport{Notice: &presenterNotice{Title: title, Body: native.NativeCredentialMessage(), Action: noticeOpenSetup}}
 		}
 		// No answer was sent; the Questions page shows the service state.
 		return presenterReport{OpenQuestions: true}

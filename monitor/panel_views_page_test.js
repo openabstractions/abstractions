@@ -444,9 +444,8 @@ const exe = 'C:\\panel\\monitor.exe';
   const unknownRule = {subject:{program:exe, account:'S-1-5-21-1'}, action:editAction, resource:editResource, outcome:'unknown', revision:'rev-1'};
   const foundRule = {...unknownRule, outcome:'found', revision:'rev-2', permit:true, setBy:{program:'C:\\oa\\openabstractions.exe', account:'S-1-5-21-1'}, setAt:'2026-09-17T10:05:00.000Z'};
   const exploreReplies = [probeReply('forbidden', unknownRule), probeReply('applied', foundRule), probeReply('forbidden', unknownRule), probeReply('forbidden', {...unknownRule, outcome:'forbidden', revision:''})];
-  const exploreCalls = [], rightsPosts = [], confirmations = [];
-  let confirmAnswer = true;
-  const context = {URLSearchParams, localStorage:{length:0, key(){}, getItem(){return null}, setItem(){}}, document:{getElementById:element, createElement:node, createTextNode:text=>({textContent:text})}, location:{search:'?k=test'}, console, confirm:(t)=>{confirmations.push(t);return confirmAnswer}, Blob, URL:{createObjectURL(){}, revokeObjectURL(){}},
+  const exploreCalls = [], rightsPosts = [];
+  const context = {URLSearchParams, localStorage:{length:0, key(){}, getItem(){return null}, setItem(){}}, document:{getElementById:element, createElement:node, createTextNode:text=>({textContent:text})}, location:{search:'?k=test'}, console, confirm:()=>{throw Error('the Explore page opened a confirm() dialog')}, Blob, URL:{createObjectURL(){}, revokeObjectURL(){}},
    fetch:async(path, opts)=>{
     if(path==='/explore') return {ok:true, json:async()=>exploreCatalogue};
     if(path.startsWith('/explore?')){exploreCalls.push(new URLSearchParams(path.split('?')[1]));const reply=exploreReplies.shift();assert(reply,'unexpected explore call '+path);return {ok:true, json:async()=>reply}}
@@ -520,11 +519,16 @@ const exe = 'C:\\panel\\monitor.exe';
   assert.equal(rewriteBox.children[0].title, editResource, 'the contract sits on the plain name as a tooltip, not in the visible line');
   assert.equal(rewriteBox.grant.disabled, true, 'grant waits for a call');
   assert.equal(rewriteBox.children[0].textContent, 'config rewrite (writes)', 'a probe that writes is labelled');
-  confirmAnswer = false;
   await rewriteBox.children.find(c=>c.textContent==='Call').onclick();
-  assert.equal(exploreCalls.length, 0, 'a declined write is not sent');
-  assert(confirmations[0].startsWith('config rewrite: WRITES: replaces your user settings'), 'the confirmation says what it writes');
-  confirmAnswer = true;
+  assert.equal(exploreCalls.length, 0, 'the first select of a write sends nothing');
+  {
+   const realNow = vm.runInContext('Date.now', context);
+   context.__now = () => realNow() + 6000; vm.runInContext('Date.now=__now', context);
+   await rewriteBox.children.find(c=>c.textContent==='Call').onclick();
+   assert.equal(exploreCalls.length, 0, 'an armed Call lapses after five seconds');
+   context.__now = realNow; vm.runInContext('Date.now=__now', context);
+  }
+  assert.equal(element('explore-status').textContent, 'Select Call again to run config rewrite. WRITES: replaces your user settings with their current values at the read revision', 'the first select says what the second does');
   await rewriteBox.children.find(c=>c.textContent==='Call').onclick();
   assert.equal(exploreCalls[0].get('capability'), 'config'); assert.equal(exploreCalls[0].get('program'), exe);
   assert.equal(exploreCalls[0].get('confirm'), 'write', 'a confirmed write says so to the Panel');
@@ -541,7 +545,7 @@ const exe = 'C:\\panel\\monitor.exe';
   assert.equal(rewriteBox.grant.disabled, false);
   await rewriteBox.grant.onclick();
   assert.deepEqual(rightsPosts[0], {edit:'set', revision:'rev-1', account:'S-1-5-21-1', program:exe, action:editAction, resource:editResource, permit:true}, 'grant is the exact rule at the listed revision');
-  assert(element('explore-status').textContent.startsWith('Granted Config rewrite'), 'grant reported in plain words, not the raw action id');
+  assert(element('explore-status').textContent.startsWith('Granted Config rewrite'), 'grant reported in plain words, not the raw action id: '+element('explore-status').textContent);
   // A call a rule decided now names that rule in the one visible line
   // itself ("Allowed: Config rewrite on this service, set by
   // openabstractions.exe on <date>."), the same plain words a rule's own
@@ -566,6 +570,7 @@ const exe = 'C:\\panel\\monitor.exe';
   assert.deepEqual(rightsPosts[1], {edit:'revoke', revision:'rev-2', account:'S-1-5-21-1', program:exe, action:editAction, resource:editResource}, 'revoke names the exact rule');
   assert(text(rewriteBox.result).includes('Refused: this Panel is not authorized.'), 'the call ran again and was refused');
   await rewriteBox.children.find(c=>c.textContent==='Call').onclick();
+  await rewriteBox.children.find(c=>c.textContent==='Call').onclick();
   assert(ruleDetailsText(rewriteBox).includes('not a rules operator'), 'operator refusal explained under Technical details');
 
   assert(text(modelBox.children[1]).includes('Decided by Model: lookup on the registry you enter'), 'a placeholder-shaped resource ("<registry>") reads as a plain clause, not printed as row text (finding 5), and the action reads in plain words, not the raw id');
@@ -582,6 +587,8 @@ const exe = 'C:\\panel\\monitor.exe';
   assert(argumentLabel, 'the argument field sits under its own labelled row');
   assert(!argumentLabel.textContent.includes('REGISTRY:REPO[@REVISION]'), 'the placeholder text is not printed as row text (finding 5)');
   assert.equal(modelBox.argument.placeholder, 'Model reference', 'the placeholder is plain words inside the input itself');
+  modelBox.armed = true; modelBox.argument.oninput();
+  assert.equal(modelBox.armed, false, 'changing the argument clears an armed Call');
 
   // A probe this runtime refuses as incompatible marks itself "Not offered"
   // after that first refusal (finding 5) instead of inviting another Call.

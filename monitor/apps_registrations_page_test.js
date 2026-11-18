@@ -34,7 +34,7 @@ const take=(source='applications')=>{const i=pending.findIndex(e=>e.query.get('s
  await until(waiting);
  await context.appsArrived;assert.equal(context.document.documentElement.dataset.ready,'1','the page marks itself ready once its first reads finished');
  assert.deepEqual(labels(),['Editor <img>'],'a registered title is text, never markup');
- assert.equal(el('apps').children[0].caption.textContent,'Registered','absence of an announcement makes no process-running claim');
+ assert.equal(el('apps').children[0].caption.textContent,'Not running','absence of an announcement makes no process-running claim');
  assert.equal(el('apps-providers').children[0].label.textContent,'engine <img>','only a real provider declaration appears, as text');
  assert.equal(el('apps-providers').children[0].caption.textContent,'Starts when needed','an on-demand provider says it starts when needed');
  assert.equal(el('apps-providers').children[0].href,'/registry?k=test#providers-section');
@@ -71,12 +71,12 @@ const take=(source='applications')=>{const i=pending.findIndex(e=>e.query.get('s
  firstProviders={outcome:'page',cursor:'p3',entries:[]};
  const providerRetry=timers.entries().next().value;timers.delete(providerRetry[0]);providerRetry[1]();
  await until(()=>pending.some(e=>e.query.get('source')==='providers'));
- assert.equal(el('apps-providers').children[0].textContent,'No providers yet.','withdrawal replaces the complete provider snapshot');
+ assert.equal(el('apps-providers').children[0].textContent,'No services yet.','withdrawal replaces the complete provider snapshot');
  assertPanelRules({tagName:'SECTION',children:[el('apps-providers')]},'Apps',{naming:true,allowClasses:allowlistedClasses('status')});
  const late=take(),lateProvider=take('providers');events.get('pagehide')();assert(late.signal.aborted&&late.aborted&&lateProvider.aborted,'page exit cancels both registry observations');
  late.resolve({outcome:'page',cursor:'a5',entries:[]});await new Promise(resolve=>setImmediate(resolve));
  lateProvider.resolve({outcome:'page',cursor:'p4',entries:[provider('late')]});await new Promise(resolve=>setImmediate(resolve));
- assert.equal(el('apps-providers').children[0].textContent,'No providers yet.','late provider response cannot change a closed page');
+ assert.equal(el('apps-providers').children[0].textContent,'No services yet.','late provider response cannot change a closed page');
  assert.deepEqual(labels(),['Notes','Paint'],'a late response cannot change a closed page');assert.equal(timers.size,0);assert.equal(writes,0,'the Apps list never writes');
  console.log('PASS: Apps follows the registry through epochs and withdrawal, names an unavailable registry, retries from a full read and cancels on page exit');
 })().catch(error=>{if(context.appsRun)context.appsRun.abort();console.error(error);process.exitCode=1});

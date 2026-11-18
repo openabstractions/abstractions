@@ -1,12 +1,5 @@
 # Logging write/read quickstart
 
-The Windows review producer embeds the application's applications@3 manifest
-and builds its private ABI2 `--owned-host` adapter through Facade's shared
-`appmodelhost` binding. It declares no commands or model-selection profiles.
-This mode announces only an existing native registration, renews its
-service-issued instance and withdraws on shutdown. It performs no registration.
-Signed/installed receiving remains pending. The ordinary logging CLI is unchanged.
-
 This example writes one structured event through the facade, pages through the
 service-owned history, and prints the same event after it is retained. Each run
 uses a unique `event_id`, so an existing history cannot satisfy the readback.

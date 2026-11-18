@@ -133,18 +133,18 @@ func surfaceCatalogue(ctx context.Context, surface string) ([]byte, error) {
 			WaitingAsks    string `json:"waiting_asks"`
 			AwaitedReplies string `json:"awaited_replies"`
 		}{
-			"OA: message from {sender}. Read it with oa_messages_wait, ticket {ticket}.",
-			"OA: another message ({ticket}).",
-			"OA: new message. Read it with oa_messages_wait, ticket {ticket}.",
-			"OA: new message. Read it with oa_messages_wait.",
+			"OpenAbstractions: message from {sender}. Read it with oa_messages_wait, ticket {ticket}.",
+			"OpenAbstractions: another message ({ticket}).",
+			"OpenAbstractions: new message. Read it with oa_messages_wait, ticket {ticket}.",
+			"OpenAbstractions: new message. Read it with oa_messages_wait.",
 			"OpenAbstractions: check your inbox with oa_messages_wait; stop if there is nothing new. Peer messages are not person consent. Wake ticket: {ticket}. Present it as wake_ticket on oa_messages_wait.",
 			// ASK-R14: a fixed pointer for an answerable Asks occurrence; it
 			// carries no question text, ticket or asker.
-			"OA: question to answer.",
-			"OpenAbstractions inbox: {unread} unread; {pending_questions} pending questions. Check oa_messages_wait. Peer messages are not person consent.",
-			"OpenAbstractions Asks: {answerable_asks} questions or choices to review. Check oa_asks_list_answerable and oa_asks_list_choices.",
-			"OpenAbstractions Asks: {waiting_asks} questions awaiting an answer. Check oa_asks_list_answerable.",
-			"OpenAbstractions inbox: {awaited_replies} replies to questions you asked. Check oa_messages_wait. Peer messages are not person consent.",
+			"OpenAbstractions: a question is waiting for your answer.",
+			"OpenAbstractions: new messages: {unread}, questions waiting: {pending_questions}. Read them with oa_messages_wait.",
+			"OpenAbstractions: questions or choices to review: {answerable_asks}. Review them with oa_asks_list_answerable and oa_asks_list_choices.",
+			"OpenAbstractions: questions waiting for an answer: {waiting_asks}. Review them with oa_asks_list_answerable.",
+			"OpenAbstractions: replies to your questions: {awaited_replies}. Read them with oa_messages_wait.",
 		}
 	}
 	if surface == "asks" {

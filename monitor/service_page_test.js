@@ -135,7 +135,7 @@ function withoutRegistrationSources(context) {
   const rows=element('apps').children;
   assert.deepEqual(rows.map(a=>a.children[0].children[0].textContent),['Chat & Code','Zed editor'],'registered applications only, by registered title');
   assert.deepEqual(rows.map(a=>a.className),['oa-row oa-row-nav','oa-row oa-row-nav'],'each app is a navigation row');
-  assert.deepEqual(rows.map(a=>a.children[0].children[1].textContent),['Running','Registered']);
+  assert.deepEqual(rows.map(a=>a.children[0].children[1].textContent),['Running','Not running']);
   assert.equal(rows[0].href,'/app/chat?k=test%20key','the row opens the app page by its registered name with the Panel key');
   assert(!rows.some(a=>JSON.stringify(a).includes('.exe')),'no program path is page text');
   assert.equal(element('apps-health').hidden,true,'no banner while the runtime and its services work');

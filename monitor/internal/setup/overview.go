@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"path/filepath"
+	"strings"
 )
 
 // Facts the Setup page shows beside its ticks that no plan carries: the
@@ -14,7 +15,8 @@ import (
 // ReleaseVersion is this release's version, such as 0.8.0: the tag the
 // release's adopter pins name.
 func ReleaseVersion() (string, error) {
-	return maintenanceVersion()
+	pins, err := parseAdopterAssets(adopterAssetsJSON)
+	return strings.TrimPrefix(pins.ReleaseTag, "v"), err
 }
 
 // InstalledSize is the folder an installed package a occupies and the bytes

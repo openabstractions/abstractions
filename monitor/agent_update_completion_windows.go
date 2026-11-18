@@ -82,7 +82,7 @@ func agentConnectionCompletionRequest(result applications.AgentUpdateResult, rec
 		return askclient.NotificationRequest{}, errors.New("connection completion has no installed hosts")
 	}
 	key := "oa-agent-update-complete-" + result.Intent
-	q := askclient.NotificationRequest{RequestRef: askclient.RequestRef{Key: key, ReplayUntilMs: until}, Title: "Connections updated", Body: "Connections updated. Reopen " + strings.Join(hosts, " and ") + ".", Tag: "agent-update-" + result.Intent, Delivery: askclient.NotificationDeliveryNow, ExpiresMs: until, Actions: []askclient.NotificationAction{}}
+	q := askclient.NotificationRequest{RequestRef: askclient.RequestRef{Key: key, ReplayUntilMs: until}, Title: "Connections updated", Body: "Restart " + strings.Join(hosts, " and ") + " to finish.", Tag: "agent-update-" + result.Intent, Delivery: askclient.NotificationDeliveryNow, ExpiresMs: until, Actions: []askclient.NotificationAction{}}
 	if !asks.ValidNotificationRequest(q) {
 		return askclient.NotificationRequest{}, errors.New("connection completion notification is invalid")
 	}

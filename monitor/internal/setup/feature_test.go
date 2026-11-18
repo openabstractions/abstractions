@@ -75,7 +75,7 @@ func TestAdapterPresenceReadsTheProgramBesideThePanel(t *testing.T) {
 	}
 	panel := filepath.Join(tools, "Abstraction Panel.exe")
 	missing := adapterPresence(panel, "pytorchd.exe", "PyTorch Image")
-	if missing.Installed || missing.Available || missing.Reason != "Run the latest OpenAbstractions Setup to add PyTorch Image." {
+	if missing.Installed || missing.Available || missing.Reason != "Install the latest OpenAbstractions to add PyTorch Image." {
 		t.Fatalf("missing adapter = %+v", missing)
 	}
 	if err := os.Mkdir(filepath.Join(tools, "pytorchd.exe"), 0o755); err != nil {
@@ -112,7 +112,7 @@ func TestAddEngineFeatureOnlyReadsAnAdapter(t *testing.T) {
 			return FeatureStatus{Reason: adapterRestoreSentence(engineFeatureTitle(engine))}, nil
 		}
 		status, err := runner.AddEngineFeature(ctx, engine)
-		want := "Run the latest OpenAbstractions Setup to add " + engineFeatureTitle(engine) + "."
+		want := "Install the latest OpenAbstractions to add " + engineFeatureTitle(engine) + "."
 		if err == nil || err.Error() != want || status.Installed {
 			t.Fatalf("%s missing adapter = %+v, %v", engine, status, err)
 		}

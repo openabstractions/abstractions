@@ -56,7 +56,7 @@ const routes = (state, over, plan, catalog = h.catalog) => (path, body) => {
     assert.strictEqual(p.parts('model:klein-compact').box.checked, false, 'no installed picture app lacks it');
     assert.strictEqual(line('pytorch'), 'Installed · not used by any app · 1.67 GB');
     assert.strictEqual(p.parts('pytorch').title, 'Diffusers');
-    assert.strictEqual(p.parts('pytorch').caption, 'FLUX.2 Klein pictures and Hummingbird-XT video on AMD graphics');
+    assert.strictEqual(p.parts('pytorch').caption, 'Pictures and video on AMD graphics');
     assert.strictEqual(p.parts('modelhost').title, 'llama.cpp');
     assert.strictEqual(p.parts('modelhost').caption, 'Chat and embeddings');
     assert.strictEqual(p.parts('thenoise').caption, 'Pictures on the processor');

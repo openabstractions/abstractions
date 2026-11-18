@@ -71,6 +71,11 @@ func validWakePointer(text, ticket string, repeated bool) bool {
 	if text == "" {
 		return true
 	}
+	// A pointer persisted before the prefix read "OpenAbstractions:" reads
+	// as its current form.
+	if rest, ok := strings.CutPrefix(text, "OA: "); ok {
+		text = "OpenAbstractions: " + rest
+	}
 	expected, err := messagesTicketPointer(ticket, "", repeated)
 	if err != nil {
 		return false

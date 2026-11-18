@@ -34,12 +34,12 @@ func TestAgentUpdateCompletionOpenCodeUsesCommonBatchNotification(t *testing.T) 
 	result, record := completionFixture()
 	result.Enrollments = append(result.Enrollments, applications.AgentEnrollment{Application: "oa-opencode-integration", State: applications.AgentEnrollmentStateEnrolled})
 	request, err := agentConnectionCompletionRequest(result, record)
-	if err != nil || request.Body != "Connections updated. Reopen Codex and Claude and OpenCode." {
+	if err != nil || request.Body != "Restart Codex and Claude and OpenCode to finish." {
 		t.Fatal(request, err)
 	}
 	result.Enrollments = result.Enrollments[2:]
 	request, err = agentConnectionCompletionRequest(result, record)
-	if err != nil || request.Body != "Connections updated. Reopen OpenCode." {
+	if err != nil || request.Body != "Restart OpenCode to finish." {
 		t.Fatal(request, err)
 	}
 	result.Enrollments[0].State = applications.AgentEnrollmentStateNone
@@ -193,9 +193,9 @@ func TestAgentUpdateCompletionNamesOnlyEligibleInstalledHosts(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := "Connections updated. Reopen Codex and Claude."
+		want := "Restart Codex and Claude to finish."
 		if single {
-			want = "Connections updated. Reopen Claude."
+			want = "Restart Claude to finish."
 		}
 		if q.Body != want || len(q.Actions) != 0 || q.Delivery != askclient.NotificationDeliveryNow {
 			t.Fatal(q)

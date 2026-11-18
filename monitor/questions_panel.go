@@ -288,7 +288,7 @@ func (p *servicePanel) questions(w http.ResponseWriter, r *http.Request) {
 		outcome, message := occurrenceUnavailable, "Setup was not finished."
 		switch reopened {
 		case occurrenceRemoved:
-			outcome, message = reopened, "The permission was removed. Finish setup did not restore it."
+			outcome, message = reopened, string(errProviderPermissionRemoved)
 		case occurrenceCompleted:
 			outcome, message = reopened, "Already set up."
 		case occurrenceApplied:

@@ -80,7 +80,7 @@ func TestModelOnlyPageReopensSavedInstallInEitherInitialReadOrder(t *testing.T) 
 			model := setup.CodingModelPlan()
 			transfer := &codingPageRunningTransfer{codingPanelTransfer: &codingPanelTransfer{panelTransfer: &panelTransfer{}}}
 			controller := setup.ModelController{Plan: &model, JournalPath: filepath.Join(root, "coding.json"), StageDir: root, ProviderRoot: root, Transfer: transfer, LocalResults: true, FreeBytes: func(string) (uint64, error) { return 1 << 50, nil }}
-			panel := &servicePanel{setupJournal: &journal, codingController: &controller, maintenanceReview: func(context.Context) setup.MaintenanceReview { return setup.MaintenanceReview{} }}
+			panel := &servicePanel{setupJournal: &journal, codingController: &controller}
 			stubOverviewMachine(t)
 			handler := panel.handler("setup-test-key")
 			review, _ := codingOnlyReview(model.ID)

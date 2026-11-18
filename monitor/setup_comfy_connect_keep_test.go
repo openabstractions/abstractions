@@ -1,10 +1,7 @@
 package main
 
 import (
-	"context"
 	"testing"
-
-	"github.com/openabstractions/abstractions/monitor/internal/setup"
 )
 
 // Owner on R30, 2026-11-11: Connect installed the integration into Comfy
@@ -24,7 +21,7 @@ func TestConnectAsksKeepAndTheRowWaitsForIt(t *testing.T) {
 	service := connectorService(t, found, "")
 	service.entry = nil
 	service.noExpect = true
-	panel := &servicePanel{setupJournal: journal, comfyApps: service, maintenanceReview: func(context.Context) setup.MaintenanceReview { return setup.MaintenanceReview{} }}
+	panel := &servicePanel{setupJournal: journal, comfyApps: service}
 	row := func() setupPackageCardFacts { return readOverview(t, panel).PictureApplication.setupPackageCardFacts }
 
 	if got := row(); got.State != "connect" || !got.Connectable {

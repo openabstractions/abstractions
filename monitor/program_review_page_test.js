@@ -20,7 +20,7 @@ vm.createContext(context);vm.runInContext(plain,context);vm.runInContext(script,
 (async()=>{
  await context.programReviewRefresh();
  const rows=document.getElementById('program-review-rows');let row=rows.children[0];const button=row.querySelector('button');
- assert.equal(button.textContent,'Review current program');await button.onclick();
+ assert.equal(button.textContent,'Review');await button.onclick();
  assert.deepEqual(posted,[{action:'review',key:'canonical-program',revision:'observed-revision'}]);
  await context.programReviewRefresh();assert.strictEqual(rows.children[0],row,'unchanged polling preserves focus and disclosure');
  records=[{...record,State:'pending_approval',Verification:'unverified',Reason:'Review the open OpenAbstractions question q-1.'}];await context.programReviewRefresh();assert(rows.children[0].querySelector('button').disabled,'an open native review stays pending');

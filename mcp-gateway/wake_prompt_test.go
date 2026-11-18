@@ -39,14 +39,30 @@ func TestWakePromptsUseGeneratedCatalogueAndExcludePeerText(t *testing.T) {
 		repeat bool
 		want   string
 	}{
-		{"Codex", false, "OA: message from Codex. Read it with oa_messages_wait, ticket 7f3a9c21."},
-		{"", false, "OA: new message. Read it with oa_messages_wait, ticket 7f3a9c21."},
-		{"Codex", true, "OA: another message (7f3a9c21)."},
+		{"Codex", false, "OpenAbstractions: message from Codex. Read it with oa_messages_wait, ticket 7f3a9c21."},
+		{"", false, "OpenAbstractions: new message. Read it with oa_messages_wait, ticket 7f3a9c21."},
+		{"Codex", true, "OpenAbstractions: another message (7f3a9c21)."},
 	} {
 		out, err := messagesTicketPointer("7f3a9c21", tc.sender, tc.repeat)
 		if err != nil || out != tc.want {
 			t.Fatal(out, err)
 		}
+	}
+	// A pointer a Codex ledger kept from before the "OpenAbstractions:"
+	// prefix still reads as valid custody.
+	for _, tc := range []struct {
+		text   string
+		repeat bool
+	}{
+		{"OA: another message (7f3a9c21).", true},
+		{"OA: message from Codex. Read it with oa_messages_wait, ticket 7f3a9c21.", false},
+	} {
+		if !validWakePointer(tc.text, "7f3a9c21", tc.repeat) {
+			t.Fatalf("persisted pointer %q refused", tc.text)
+		}
+	}
+	if validWakePointer("OA: another message (00000000).", "7f3a9c21", true) {
+		t.Fatal("a pointer with another ticket was accepted")
 	}
 	module, err := hooks.ProjectRegister(hooks.Register())
 	if err != nil {

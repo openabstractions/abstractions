@@ -129,7 +129,7 @@ func TestVideoRequestOutcomes(t *testing.T) {
 		t.Fatal("failed", outcome, err, failed)
 	}
 	last := failed.notices[len(failed.notices)-1]
-	if last.Title != "OpenCode video setup stopped" || last.Body != "Video with sound could not be set up. OpenCode can ask again." {
+	if last.Title != "Couldn't finish setting up OpenCode video" || last.Body != "Video with sound could not be set up. OpenCode can ask again." {
 		t.Fatalf("failure notice %+v", last)
 	}
 	// The coding-model journal records nothing of a video request.

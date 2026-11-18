@@ -99,6 +99,8 @@ const validTicket=value=>typeof value==='string'&&/^(?:[0-9a-f]{8}|[0-9a-f]{64})
 const validSender=value=>typeof value==='string'&&value.length>0&&[...value].length<=32&&value.trim()===value&&/^[\p{L}\p{N}\p{M} _-]+$/u.test(value);
 export function validWakePointer(text,ticket){
   if(typeof text!=='string'||!validTicket(ticket)||text.length>512)return false;
+  // A pointer sent before the prefix read "OpenAbstractions: " reads as its current form.
+  if(text.startsWith('OA: '))text='OpenAbstractions: '+text.slice(4);
   const render=value=>value.replaceAll('{ticket}',ticket);
   if(ticket.length===64)return text===render(wakePrompt.legacy);
   if([wakePrompt.repeat,wakePrompt.anonymous].some(value=>text===render(value)))return true;

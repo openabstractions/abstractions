@@ -215,10 +215,10 @@ const later = ms => new Date(Date.now() + ms).toISOString();
     [{state: 'finish', kind: 'comfy-desktop', open: true}, 'Open Comfy Desktop to finish its setup', 'Open'],
     [{state: 'connect', kind: 'desktop', folder: 'C:\\Users\\x\\Documents\\ComfyUI'}, 'Installed · not connected to OpenAbstractions', 'Connect'],
     [{state: 'connected', kind: 'desktop', folder: 'C:\\Users\\x\\Documents\\ComfyUI', open: true}, 'Installed · connected to OpenAbstractions', 'Open'],
-    [{state: 'connected', kind: 'desktop', folder: 'C:\\Users\\x\\Documents\\ComfyUI', open: true, update: true}, 'Installed · an update to its OpenAbstractions integration is ready', 'Update'],
+    [{state: 'connected', kind: 'desktop', folder: 'C:\\Users\\x\\Documents\\ComfyUI', open: true, update: true}, 'Installed · Update ready', 'Update'],
     [{state: 'connected', kind: 'desktop', open: true, update: true, update_blocked: "this OpenAbstractions build doesn't include the integration update"}, "Installed · update unavailable: this OpenAbstractions build doesn't include the integration update", 'Open'],
     [{state: 'connected', kind: 'desktop', open: true, restart: true}, 'Installed · restart ComfyUI to use the updated integration', 'Open'],
-    [{state: 'connected', kind: 'desktop', open: true, changed: true}, 'Installed · changed since you connected it', 'Connect']]) {
+    [{state: 'connected', kind: 'desktop', open: true, changed: true}, 'Installed · Connect again to use it', 'Connect']]) {
     const s = server({overview: {picture_application: h.comfy(facts)}});
     const p = await h.page(s.handle);
     const row = p.parts('comfyui');
@@ -240,7 +240,7 @@ const later = ms => new Date(Date.now() + ms).toISOString();
     assert(!p.row('comfyui'));
     assert.strictEqual(p.parts('picture-fixture').title, 'Picture Fixture');
     assert.strictEqual(action(p, 'picture-fixture').textContent, 'Get Picture Fixture');
-    assert.strictEqual(p.parts('comfyui-oa').title, 'ComfyUI (OA build)');
+    assert.strictEqual(p.parts('comfyui-oa').title, 'ComfyUI (previous version)');
     await press(action(p, 'picture-fixture'));
     assert.deepStrictEqual(opened, [['https://approved.example/download', '_blank']]);
     s.over = {picture_application: h.comfy({id: 'picture-fixture', title: 'Picture Fixture', state: 'connected', open: true})};
@@ -352,7 +352,7 @@ const later = ms => new Date(Date.now() + ms).toISOString();
   {
     const s = server({overview: {picture_application: h.comfy({state: 'connect', kind: 'desktop', connectable: false})}});
     const p = await h.page(s.handle);
-    assert.strictEqual(p.parts('comfyui').line, "Installed · this OpenAbstractions build can't connect it yet");
+    assert.strictEqual(p.parts('comfyui').line, "Installed · Update OpenAbstractions to connect it");
     assert.deepStrictEqual([action(p, 'comfyui').textContent, action(p, 'comfyui').disabled], ['Connect', true]);
   }
 
@@ -413,8 +413,8 @@ const later = ms => new Date(Date.now() + ms).toISOString();
     const p = await h.page(s.handle);
     assert.deepStrictEqual(p.rowIDs('setup-app-rows'), ['setup-row-comfyui', 'setup-row-comfyui-oa', 'setup-row-opencode']);
     const row = p.parts('comfyui-oa');
-    assert.deepStrictEqual([row.title, row.caption, row.line, row.box], ['ComfyUI (OA build)', 'Installed by an earlier OpenAbstractions', 'Installed · removing it keeps your pictures and models', null]);
-    assert.deepStrictEqual([action(p, 'comfyui-oa').textContent, action(p, 'comfyui-oa').disabled], ['Remove the OA build of ComfyUI', false]);
+    assert.deepStrictEqual([row.title, row.caption, row.line, row.box], ['ComfyUI (previous version)', 'From an earlier version', 'Installed · removing it keeps your pictures and models', null]);
+    assert.deepStrictEqual([action(p, 'comfyui-oa').textContent, action(p, 'comfyui-oa').disabled], ['Remove previous version', false]);
     const body = h.allText(row.body);
     assert(h.facts(row.body).includes('Removed: Its program, Apps entry and Start menu shortcut.') && h.facts(row.body).includes('Kept: Your pictures, models and the files you added.'), body);
     assert.strictEqual(p.parts('comfyui').line, 'Not installed');
@@ -436,13 +436,13 @@ const later = ms => new Date(Date.now() + ms).toISOString();
     const p = await h.page(s.handle);
     await press(action(p, 'comfyui-oa'));
     assert.deepStrictEqual(p.posts('/setup/comfy/remove-oa-build').map(r => r.body), [{confirm: true}]);
-    assert.deepStrictEqual(p.summary(), {sentence: 'Removing the OA build of ComfyUI…', facts: '900 of 39,200 files checked.', button: 'Cancel', disabled: false});
+    assert.deepStrictEqual(p.summary(), {sentence: 'Removing previous version…', facts: '900 of 39,200 files checked.', button: 'Cancel', disabled: false});
     assert.strictEqual(p.parts('comfyui-oa').line, 'Removing · 900 of 39,200 files checked');
     assert.strictEqual(action(p, 'comfyui-oa').disabled, true);
     const {actions, ...rest} = s.state;
     s.state = {...rest, outcomes: {'comfyui-app': {kind: 'remove', step_id: 'r1', ended_at: new Date().toISOString(), failure: 'the version is in use or locked; close it and retry'}}};
     await p.runTimers();
-    assert.deepStrictEqual([p.summary().sentence, p.summary().button], ['ComfyUI (OA build) was not removed. The version is in use or locked.', 'Try again']);
+    assert.deepStrictEqual([p.summary().sentence, p.summary().button], ['ComfyUI (previous version) was not removed. The version is in use or locked.', 'Try again']);
     assert.strictEqual(p.parts('comfyui-oa').lineState, 'error');
     // Pressed again, the removal finishes and the row is gone.
     const again = await h.page(s.handle);
@@ -464,7 +464,7 @@ const later = ms => new Date(Date.now() + ms).toISOString();
       actions: {'comfyui-app': {kind: 'remove', started_at: now, deadline: later(600000), done: 20700, total: 39200, progress_at: now, cancellable: true}}});
     s.handle = (orig => (path, body) => path === '/setup/cancel-step' ? (s.calls.push(path + ' ' + JSON.stringify(body)), {cancelled: true}) : orig(path, body))(s.handle);
     const p = await h.page(s.handle);
-    assert.deepStrictEqual(p.summary(), {sentence: 'Removing the OA build of ComfyUI…', facts: '20,700 of 39,200 files checked.', button: 'Cancel', disabled: false});
+    assert.deepStrictEqual(p.summary(), {sentence: 'Removing previous version…', facts: '20,700 of 39,200 files checked.', button: 'Cancel', disabled: false});
     assert.strictEqual(p.parts('comfyui-oa').line, 'Removing · 20,700 of 39,200 files checked');
     await p.click();
     for (let i = 0; i < 3; i++) await h.settled();
@@ -481,7 +481,7 @@ const later = ms => new Date(Date.now() + ms).toISOString();
     assert.strictEqual(p.summary().sentence, 'Tick to install. Clear a tick to remove.', 'record ' + JSON.stringify(record));
     assert.strictEqual(p.posts('/setup/settle-removal').length, 0);
     assert.strictEqual(p.parts('comfyui-oa').line, 'Removing stopped before it finished');
-    assert.deepStrictEqual([action(p, 'comfyui-oa').textContent, action(p, 'comfyui-oa').disabled], ['Remove the OA build of ComfyUI', false]);
+    assert.deepStrictEqual([action(p, 'comfyui-oa').textContent, action(p, 'comfyui-oa').disabled], ['Remove previous version', false]);
   }
 
   // Journey suite, 2026-11-10: an engine removal refused because another
@@ -635,7 +635,7 @@ const later = ms => new Date(Date.now() + ms).toISOString();
     const s = server({overview: {picture_models: [{...h.compact(), prepared: true}, h.full(), h.zimage()]}});
     s.record = {plan_id: 'plan-owner', model_plan_id: 'klein-compact', picture_model_plan_ids: [], rules: [{action: 'a', resource: 'r'}], interrupted: 'update'};
     const p = await h.page(s.handle);
-    assert.deepStrictEqual(p.summary(), {sentence: 'Catalog stopped when OpenAbstractions updated.', facts: 'ComfyUI\'s permissions are not saved yet.', button: 'Install', disabled: false});
+    assert.deepStrictEqual(p.summary(), {sentence: 'Setup paused while OpenAbstractions updated.', facts: 'ComfyUI\'s permissions are not saved yet.', button: 'Install', disabled: false});
   }
 
   // A step still waiting continues on its timer; Cancel records the cancel

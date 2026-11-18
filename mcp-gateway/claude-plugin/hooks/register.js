@@ -14,6 +14,8 @@ const asksPointer = wakePrompt.asks;
 const urgentWakeIntervalMs = 30000;
 function validPointer(text, ticket) {
   if (typeof text !== 'string' || !validTicket(ticket) || text.length > 512) return false;
+  // A pointer sent before the prefix read "OpenAbstractions: " reads as its current form.
+  if (text.startsWith('OA: ')) text = 'OpenAbstractions: ' + text.slice(4);
   const render = value => value.replaceAll('{ticket}', ticket);
   if (ticket.length === 64) return text === render(wakePrompt.legacy);
   if ([wakePrompt.repeat, wakePrompt.anonymous].some(value => text === render(value))) return true;
@@ -244,7 +246,7 @@ async function observe($, state, wait, reservation = null) {
   try { decision = (await $.tool.check({tool: watchTool, input}))?.decision; } catch { /* Unknown remains blocked. */ }
   if (state.closed || await $.session.id() !== state.session) throw terminal('OA session changed', 'stopped_context');
   if (decision !== 'allow') {
-    status($, state, 'background messages need permission; enable them in the Panel; OpenAbstractions status unconfirmed');
+    status($, state, 'Messages need your OK. Allow them in OpenAbstractions Panel.');
     const error = new Error('OA watch permission unavailable');
     error.permission = true;
     throw error;

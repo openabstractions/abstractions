@@ -40,7 +40,7 @@ const agentMessagesDefault = "agent-messages"
 const (
 	agentMessagesCaption    = "Your agents can send each other messages and questions."
 	agentMessagesAskLabel   = "Ask me first"
-	agentMessagesAskCaption = "What you answered for one agent still applies."
+	agentMessagesAskCaption = ""
 	agentMessagesAskName    = "Ask before an agent messages another"
 )
 
