@@ -21,6 +21,7 @@ from unittest import mock
 import zipfile
 
 from scripts import package_comfyui_app as app
+from scripts.git_env import source_git_environment
 
 
 class LocalNativeSnapshotTests(unittest.TestCase):
@@ -3567,15 +3568,39 @@ class StageTests(_Stage):
 
 class RepackSourceTests(_Stage):
     def _git_fixture(self, root: Path, files: dict[str, bytes]) -> str:
+        env = source_git_environment()
         root.mkdir(parents=True)
-        subprocess.run(["git", "-C", str(root), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(root), "init", "-q"], check=True, env=env)
         for name, data in files.items():
             path = root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
-        subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
-        subprocess.run(["git", "-C", str(root), "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "fixture"], check=True)
-        return subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
+        subprocess.run(["git", "-C", str(root), "add", "-A"], check=True, env=env)
+        subprocess.run(["git", "-C", str(root), "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "fixture"], check=True, env=env)
+        return subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True, env=env).strip()
+
+
+    def test_git_fixture_isolates_incomplete_config_and_preserves_caller_environment(self):
+        foreign = self.root / 'foreign'
+        foreign.mkdir()
+        marker = foreign / 'caller-owned'
+        marker.write_bytes(b'unchanged')
+        caller = dict(os.environ)
+        with mock.patch.dict(os.environ, {
+                'GIT_CONFIG_COUNT': '1', 'GIT_CONFIG_KEY_0': 'core.fsmonitor',
+                'GIT_DIR': str(foreign / '.git'), 'GIT_WORK_TREE': str(foreign),
+                'GIT_INDEX_FILE': str(foreign / 'index')}):
+            os.environ.pop('GIT_CONFIG_VALUE_0', None)
+            before = dict(os.environ)
+            root = self.root / 'isolated-source'
+            head = self._git_fixture(root, {'fixture.txt': b'owned source\n'})
+            self.assertTrue(dict(os.environ) == before, 'fixture changed the caller environment')
+            self.assertEqual(subprocess.check_output(
+                ['git', '-C', str(root), 'show', head + ':fixture.txt'],
+                env=source_git_environment()), b'owned source\n')
+            self.assertEqual(list(foreign.iterdir()), [marker])
+            self.assertEqual(marker.read_bytes(), b'unchanged')
+        self.assertTrue(dict(os.environ) == caller, 'caller environment was not restored')
 
     def test_public_integration_source_closes_every_pinned_repository(self):
         adopter = self.root / "adopter-comfyui"
