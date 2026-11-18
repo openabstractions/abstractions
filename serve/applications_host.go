@@ -56,6 +56,8 @@ type applicationsHost struct {
 
 	// messageProgressStarts lets each progress pass resume within its slice.
 	messageProgressStarts messageProgressStarts
+	// messageProgressSettled lets an idle pass skip unchanged records.
+	messageProgressSettled messageProgressSettled
 }
 
 func listenApplications(endpoint string, directory *applicationDirectory, owner string, report func(error)) (*applicationsHost, error) {

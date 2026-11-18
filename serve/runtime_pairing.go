@@ -135,7 +135,7 @@ func composeRuntimePairing(ctx context.Context, options runtimeFlags, a *runtime
 		services.provider.Recheck(owned)
 		p.gate.Advance()
 		if p.messageHost != nil && p.messageHost.messages != nil {
-			p.messageHost.messages.gate.Advance()
+			p.messageHost.messages.advance()
 		}
 	}
 	services.providers.setPairedHosts(p.pairedHosts)

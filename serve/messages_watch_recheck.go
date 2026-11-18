@@ -9,8 +9,8 @@ import (
 // Rights and directory edits wake the existing gate after publication. Each
 // wait uses its own current authority and storage checks before answering.
 func (h *applicationsHost) followMessageChanges(ctx context.Context) func() {
-	d, gate := h.directory, h.messages.gate
-	recheck := watch.NewRecheck(ctx, 0, func(context.Context) { gate.Advance() })
+	d, store := h.directory, h.messages
+	recheck := watch.NewRecheck(ctx, 0, func(context.Context) { store.advance() })
 	d.mu.Lock()
 	d.messageRecheck = recheck
 	d.unlock()

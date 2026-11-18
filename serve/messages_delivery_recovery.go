@@ -94,7 +94,7 @@ func (s *messageStore) recordForPointer(ctx context.Context, ref messagePointer)
 		if err != nil {
 			return nil, err
 		}
-		s.gate.Advance()
+		s.advance()
 		return s.readRecord(ctx, ref.Key)
 	}
 	delivery := state.Delivery
@@ -148,7 +148,7 @@ func (s *messageStore) recordForPointer(ctx context.Context, ref messagePointer)
 	if err != nil {
 		return nil, err
 	}
-	s.gate.Advance()
+	s.advance()
 	if err := s.retainDeliveryEcho(ctx, ref.Key, ref.Token, delivery); err != nil {
 		return nil, err
 	}

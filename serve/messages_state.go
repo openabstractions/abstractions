@@ -330,7 +330,7 @@ func (s *messageStore) transitionState(ctx context.Context, key string, r *messa
 		})
 	})
 	if err == nil {
-		s.gate.Advance()
+		s.advance()
 	}
 	return err
 }

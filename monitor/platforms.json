@@ -1,6 +1,6 @@
 {
   "schema": "openabstractions.platforms/1",
-  "about": "Published runtime 0.4.0 signing and installed acceptance, with earlier lifecycle receipts retained at their stated scope. Cross-builds do not establish hardware installation. scripts/catalogue.py generates both catalogues from this declaration.",
+  "about": "Runtime platform support. Each release's appended Signatures section states its signing outcome, and its build record names the installed-tested architectures. Earlier lifecycle receipts are retained at their stated scope. Cross-builds do not establish hardware installation. scripts/catalogue.py generates both catalogues from this declaration.",
   "statuses": {
     "supported": "The released runtime installs and uninstalls, its background service starts and becomes ready, and an application's default resolution reaches it. Listed limits bound the platforms and behaviors with recorded qualification.",
     "supported without background services": "The programs install, run in the foreground and uninstall. No background service is registered, and default resolution finds no runtime.",
@@ -11,10 +11,10 @@
       "id": "windows-user",
       "name": "Windows x64, per-user installation",
       "status": "supported",
-      "runtime": "Per-user MSI; the supervisor starts the runtime in the signed-in session.",
+      "runtime": "The per-user MSI (Just me); installation starts the runtime immediately, and the next application that needs it starts a host that exited.",
       "limits": [
-        "Both 0.4.0 Windows MSIs and Setup are signed with SHA-256 Authenticode and an RFC 3161 SHA-256 timestamp.",
-        "0.4.0 signed-MSI automated acceptance used Windows x64; signed Setup verification also passed. Manual Setup remains deferred. ARM64 is cross-built; installation on ARM64 hardware is untested."
+        "The release's appended Signatures section states the signing outcome for its MSIs and Setup.",
+        "The release's build record names the installed-tested architectures. A cross-built architecture is not installation-tested by its build."
       ],
       "evidence": [
         {
@@ -33,11 +33,11 @@
       "id": "windows-machine",
       "name": "Windows x64, machine installation",
       "status": "supported",
-      "runtime": "Machine MSI; a service template starts a per-session runtime for each signed-in user.",
+      "runtime": "Setup or the machine MSI (Everyone); an application's request starts an owned detached runtime host. The host supervises its runtime child; Windows does not restart the host automatically after a crash.",
       "limits": [
-        "Everyone installation requires elevation. Runtime instances run in each signed-in user session.",
-        "Both 0.4.0 Windows MSIs and Setup are signed with SHA-256 Authenticode and an RFC 3161 SHA-256 timestamp.",
-        "0.4.0 signed-MSI automated acceptance used Windows x64; signed Setup verification also passed. Manual Setup remains deferred. ARM64 is cross-built; installation on ARM64 hardware is untested."
+        "Everyone installation requires elevation. Runtime instances run in each user's session.",
+        "The release's appended Signatures section states the signing outcome for its MSIs and Setup.",
+        "The release's build record names the installed-tested architectures. A cross-built architecture is not installation-tested by its build."
       ],
       "evidence": [
         {
@@ -59,6 +59,7 @@
       "runtime": "Per-user tarball; install.sh registers abstraction-runtime.service with the user manager.",
       "limits": [
         "Trusted selection needs clone3 and waitid P_PIDFD (Linux 5.4 or newer); a sandbox denying them returns PROOF_UNAVAILABLE.",
+        "The release's appended Signatures section states the signing outcome for its tarballs.",
         "0.3.0 package qualification passed 26 installed Linux cases, with lifecycle evidence from WSL2 and a hosted Ubuntu amd64 runner. ARM64 installation, other distributions and graphical sessions are untested."
       ],
       "evidence": [
@@ -108,15 +109,16 @@
     },
     {
       "id": "macos",
-      "name": "macOS (universal package; installed qualification on arm64)",
+      "name": "macOS (universal package)",
       "status": "supported",
       "facade_platform": "macos",
-      "runtime": "The Developer ID signed, notarised and stapled 0.4.0 universal package installs for the current user. Automated installed XPC acceptance passed on arm64; earlier lifecycle receipts retain their stated scope.",
+      "runtime": "The universal package, when attached to the release, installs for the current user. Earlier lifecycle receipts retain their stated scope.",
       "limits": [
-        "The universal package includes Intel binaries, but installed execution was tested only on arm64 hardware.",
+        "The release's appended Signatures section states the package's signing and notarisation outcome; a successful build alone does not attach a package.",
+        "The universal package carries x86_64 and arm64 programs. The 0.4.0 and 0.3.0 installed acceptance ran on arm64 hardware only.",
         "The retained installed receipt covers install, XPC discovery/calls, reinstall and removal; it does not record a separate crash-injection recovery test.",
         "Path names compare byte for byte on macOS. OA does not model APFS or HFS+ case and normalization algorithms, so names it keeps apart can collide at a future placement; existing-file identity and exclusive creation checks retain their separate safeguards (abstraction-identity CONTRACT.md, SamePathName).",
-        "Native providers are not available on macOS in 0.4.0: their caller check needs an XPC endpoint. The macOS package leaves out Local model stores (inventoryd) and the model host (modelhostd)."
+        "The 0.4.0 macOS package left out Local model stores (inventoryd) and the model host (modelhostd), because native providers' caller check needed an XPC endpoint. Each release's notes list its package contents."
       ],
       "evidence": [
         {

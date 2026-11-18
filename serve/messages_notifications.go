@@ -174,7 +174,9 @@ func messageNoticeName(name string) string {
 }
 
 func (s *messageStore) updateMessageNotice(ctx context.Context, key, token string, update func(*messageRecord)) error {
-	return cas.ChangeLimitContext(ctx, s.recordPath(key), messageRecordLimit, func(raw []byte) ([]byte, error) {
+	written := false
+	err := cas.ChangeLimitContext(ctx, s.recordPath(key), messageRecordLimit, func(raw []byte) ([]byte, error) {
+		written = false
 		var current messageRecord
 		if raw == nil {
 			return nil, errors.New("messages: notice acceptance missing")
@@ -186,8 +188,13 @@ func (s *messageStore) updateMessageNotice(ctx context.Context, key, token strin
 			return raw, nil
 		}
 		update(&current)
+		written = true
 		return json.Marshal(current)
 	})
+	if err == nil && written {
+		s.advance()
+	}
+	return err
 }
 
 func (h *applicationsHost) progressMessageNotifications(ctx context.Context, key string, r *messageRecord) error {

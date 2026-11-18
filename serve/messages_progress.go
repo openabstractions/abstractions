@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/openabstractions/abstraction-facade/go/abstraction/facade/applications"
 	msg "github.com/openabstractions/abstraction-facade/go/abstraction/facade/messages"
@@ -61,6 +62,41 @@ func (s *messageProgressStarts) store(slice string, next int) {
 		return
 	}
 	s.starts[slice] = next
+}
+
+// messageProgressSettle bounds how long a settled record waits for its next
+// reconciliation when nothing in the store, the directory or rights changed.
+const messageProgressSettle = 5 * time.Second
+
+// messageProgressSettled remembers the records a pass reconciled with nothing
+// left to do, with the store change count that pass observed. An idle pass
+// skips them until the count moves, their own deadline arrives or the settle
+// interval ends, so idle work stays flat however many messages are retained.
+type messageProgressSettled struct {
+	mu   sync.Mutex
+	rows map[string]messageProgressSettledRow
+}
+
+type messageProgressSettledRow struct {
+	token   string
+	changes uint64
+	dueMs   int64
+}
+
+func (s *messageProgressSettled) skip(ref messagePointer, changes uint64, nowMs int64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	row, ok := s.rows[ref.Key]
+	return ok && row.token == ref.Token && row.changes == changes && nowMs < row.dueMs
+}
+
+func (s *messageProgressSettled) store(ref messagePointer, changes uint64, dueMs int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.rows == nil || len(s.rows) >= 4096 {
+		s.rows = map[string]messageProgressSettledRow{}
+	}
+	s.rows[ref.Key] = messageProgressSettledRow{token: ref.Token, changes: changes, dueMs: dueMs}
 }
 
 func newMessageProgressPass() *messageProgressPass {
@@ -230,6 +266,12 @@ func (h *applicationsHost) reconcileMessageStateIn(ctx context.Context, key stri
 // A short single page returns the same slice on every pass.
 func (h *applicationsHost) progressMessages(ctx context.Context) (result error) {
 	pass := newMessageProgressPass()
+	// A lease whose deadline passed ends here; its lapse advances the store.
+	if h.directory != nil && h.directory.lock(ctx) {
+		h.directory.expireLocked()
+		h.directory.unlock()
+	}
+	changes, nowMs := h.messages.changes.Load(), h.messages.now().UnixMilli()
 	refs, err := h.messages.expiryProgress(ctx)
 	if err != nil {
 		return err
@@ -259,6 +301,10 @@ func (h *applicationsHost) progressMessages(ctx context.Context) (result error) 
 	var forwarding []forwardObservation
 	for i, ref := range refs {
 		reached = i
+		if h.messageProgressSettled.skip(ref, changes, nowMs) {
+			continue
+		}
+		auditPending := false
 		if h.messages.inspect != nil {
 			h.messages.inspect("progress_record", (start+i)%len(refs))
 		}
@@ -294,6 +340,7 @@ func (h *applicationsHost) progressMessages(ctx context.Context) (result error) 
 				if h.report != nil {
 					h.report(errors.New("messages: audit append pending"))
 				}
+				auditPending = true
 			}
 		}
 		if record == nil || record.Token != ref.Token || record.Forward != nil || record.Lost || record.Alias || record.ExpiresUnixMs <= h.messages.now().UnixMilli() {
@@ -324,6 +371,13 @@ func (h *applicationsHost) progressMessages(ctx context.Context) (result error) 
 		}
 		if err = h.progressMessageStart(ctx, ref.Key, record); err != nil {
 			return err
+		}
+		due := min(record.ExpiresUnixMs, nowMs+messageProgressSettle.Milliseconds())
+		if request.Kind == msg.KindQuestion && request.AnswerByUnixMs > 0 {
+			due = min(due, request.AnswerByUnixMs)
+		}
+		if !auditPending {
+			h.messageProgressSettled.store(ref, changes, due)
 		}
 	}
 	reached = len(refs)

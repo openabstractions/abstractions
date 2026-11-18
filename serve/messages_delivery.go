@@ -421,7 +421,7 @@ func (s *messageStore) deliveryPage(ctx context.Context, account, receiver, cont
 		return msg.Page{Outcome: msg.OutcomeUnknown, Messages: []msg.Message{}, Headers: []msg.Header{}}, nil
 	}
 	if after != "" {
-		s.gate.Advance()
+		s.advance()
 	}
 	return page, handed
 }

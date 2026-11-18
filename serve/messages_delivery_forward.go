@@ -248,7 +248,7 @@ func (s *messageStore) acceptForward(ctx context.Context, actor messageActor, re
 	if err := s.at("forward_receipt_published"); err != nil {
 		return unknown
 	}
-	s.gate.Advance()
+	s.advance()
 	return out
 }
 
@@ -311,7 +311,7 @@ func (s *messageStore) finishForwardDeliveryLocked(ctx context.Context, key stri
 	if err != nil {
 		return err
 	}
-	s.gate.Advance()
+	s.advance()
 	if err := s.retainDeliveryEcho(ctx, key, r.Token, next); err != nil && !errors.Is(err, errMessageStateInvalid) {
 		return err
 	}

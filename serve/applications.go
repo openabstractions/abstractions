@@ -17,6 +17,7 @@ import (
 	"reflect"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -1214,6 +1215,8 @@ func (d *applicationDirectory) expireLocked() {
 		if !now.Before(l.deadline) {
 			d.recordPresenceEndLocked(l, applicationPresenceLapsed)
 			delete(d.instances, id)
+			// A lapsed receiver may now need a start; progress rechecks it.
+			d.recheckMessagesLocked()
 		}
 	}
 	d.expireNativeInboxesLocked()
@@ -1247,6 +1250,7 @@ func (d *applicationDirectory) announceInSession(ctx context.Context, s rights.S
 	d.expireLocked()
 	id := p.Instance
 	var agentAdmission *applicationAgentAdmission
+	var previousContexts []wire.ApplicationContext
 	if id != "" {
 		old, ok := d.instances[id]
 		if !ok {
@@ -1256,6 +1260,7 @@ func (d *applicationDirectory) announceInSession(ctx context.Context, s rights.S
 			return appChange(wire.ApplicationOutcomeForbidden, "")
 		}
 		agentAdmission = old.agentAdmission
+		previousContexts = old.value.Contexts
 	} else {
 		if len(d.instances) >= 128 {
 			return appChange(wire.ApplicationOutcomeUnavailable, "capacity")
@@ -1279,8 +1284,12 @@ func (d *applicationDirectory) announceInSession(ctx context.Context, s rights.S
 		d.recordStartLocked(ctx, p.Application, session, id, v)
 	}
 	// Native inbox removal above signals the mailbox. A presence heartbeat
-	// alone does not change inbox ownership or a message's admission.
+	// alone does not change inbox ownership or a message's admission. A new
+	// presence or a changed context set does change start and wake decisions.
 	d.notifyDirectoryLocked()
+	if p.Instance == "" || !slices.Equal(previousContexts, contexts) {
+		d.recheckMessagesLocked()
+	}
 	return wire.ApplicationChange{Outcome: wire.ApplicationOutcomeApplied, Instance: id}
 }
 

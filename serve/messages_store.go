@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	cas "github.com/openabstractions/abstraction-cas/go"
@@ -129,6 +130,15 @@ type messageStore struct {
 	// durable wake order files after a restart.
 	wakeMu    sync.Mutex
 	wakeIndex map[string]messageWakeTarget
+	// changes counts every gate advance: a stored message, a rights edit or a
+	// directory edit. Progress skips a settled record while it is unchanged.
+	changes atomic.Uint64
+}
+
+// advance publishes a change to message waiters and to the progress worker.
+func (s *messageStore) advance() {
+	s.changes.Add(1)
+	s.gate.Advance()
 }
 
 func messageDigest(s string) string {
@@ -909,7 +919,7 @@ func (s *messageStore) acceptRecord(ctx context.Context, actor messageActor, rec
 		return unknown
 	}
 	if !accepted.Alias {
-		s.gate.Advance()
+		s.advance()
 	}
 	return messageReceipt(accepted)
 }

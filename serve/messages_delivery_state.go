@@ -212,7 +212,7 @@ func (s *messageStore) finishDeliveryOf(ctx context.Context, key, token string, 
 		return nil
 	}
 	if err == nil {
-		s.gate.Advance()
+		s.advance()
 		if err := s.retainDeliveryEcho(ctx, key, token, next); err != nil {
 			if !errors.Is(err, errMessageStateInvalid) {
 				return err

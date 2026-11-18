@@ -155,7 +155,8 @@ func TestMessageProgressBudgetCutPassReachesLaterRecords(t *testing.T) {
 		var ctx context.Context
 		ctx, cancel = context.WithCancel(t.Context())
 		visits = 0
-		if err := h.progressMessages(ctx); err == nil {
+		// Once every record settled, an idle pass skips them and completes.
+		if err := h.progressMessages(ctx); err == nil && len(reached) < 20 {
 			t.Fatal("pass was not cut", visits, reached)
 		}
 		cancel()
